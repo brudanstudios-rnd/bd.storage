@@ -1,0 +1,16 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+!bin/**/.pyc
+*$py.class
+
+# Eclipse / PyDev projects
+.project
+.pydevproject
+.settings/
+.idea/
+
+# virtual environment
+venv/
+dist/
+build/
