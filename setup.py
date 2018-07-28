@@ -61,6 +61,7 @@ setup(
     install_requires=map(lambda x: x.strip(), open("requirements.txt", "r").readlines()),
     zip_safe=False,
     package_dir={"": "python"},
+    package_data={'bd.loader': ['hooks/*']},
     cmdclass={
         "build_py": build_obfuscate,
     }
