@@ -52,7 +52,7 @@ class build_obfuscate(build_py):
 
 setup(
     name='bd',
-    version="v0.0.1",
+    version="v0.0.2",
     description=open("README.md", "r").read(),
     long_description='',
     author='Heorhi Samushyia',
