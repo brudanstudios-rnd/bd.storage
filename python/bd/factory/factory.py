@@ -70,13 +70,21 @@ def _init_all(toolset_dir):
 
 
 def create(name):
-    development_dir = Path(config.get_value("development_dir"))
-    if not development_dir.exists():
-        raise BDFilesystemPathNotFound(str(development_dir))
+    try:
+        development_dir = Path(config.get_value("development_dir"))
+        if not development_dir.exists():
+            raise BDFilesystemPathNotFound(str(development_dir))
 
-    toolset_dir = development_dir / "toolbox" / name
-    if toolset_dir.exists():
-        raise BDUnableToOverwrite(str(toolset_dir))
+        toolset_dir = development_dir / "toolbox" / name
+        if toolset_dir.exists():
+            raise BDUnableToOverwrite(str(toolset_dir))
 
-    if not _init_all(toolset_dir):
-        utils.cleanup(toolset_dir)
+        if not _init_all(toolset_dir):
+            utils.cleanup(toolset_dir)
+            return False
+
+    except BDException as e:
+        LOGGER.error(e)
+
+    else:
+        return True

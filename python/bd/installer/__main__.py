@@ -17,9 +17,8 @@ except Exception as e:
     sys.exit(1)
 
 
-def _add_args_install(subparsers):
-    parser = subparsers.add_parser("install",
-                                   help="Install toolset")
+def _add_args(parser):
+
     parser.add_argument("name",
                         help="The name of toolset to install",
                         type=str)
@@ -32,20 +31,13 @@ def _add_args_install(subparsers):
     parser.set_defaults(which="install")
 
 
-def _add_args(parser):
-
-    subparsers = parser.add_subparsers()
-
-    _add_args_install(subparsers)
-
-
 def _install(name, release, devel):
     from bd.installer import install
-    install(name, release, devel)
+    return install(name, release, devel)
 
 
 def main():
-    parser = ArgumentParser(prog="bd-installer")
+    parser = ArgumentParser(prog="bd-install")
 
     _add_args(parser)
 
@@ -68,10 +60,9 @@ def main():
         LOGGER.error(e)
         sys.exit(1)
 
-    if args.which == "install":
-        _install(args.name,
-                 args.release,
-                 args.devel)
+    sys.exit(not _install(args.name,
+                          args.release,
+                          args.devel))
 
 
 if __name__ == '__main__':

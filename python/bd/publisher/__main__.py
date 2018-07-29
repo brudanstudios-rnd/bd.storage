@@ -17,9 +17,7 @@ except Exception as e:
     sys.exit(1)
 
 
-def _add_args_publish(subparsers):
-    parser = subparsers.add_parser("publish",
-                                   help="Publish a new release of the toolset")
+def _add_args(parser):
     parser.add_argument("name",
                         help="The name of toolset to publish",
                         type=str)
@@ -29,20 +27,13 @@ def _add_args_publish(subparsers):
     parser.set_defaults(which="publish")
 
 
-def _add_args(parser):
-
-    subparsers = parser.add_subparsers()
-
-    _add_args_publish(subparsers)
-
-
 def _publish(name, release):
     from bd.publisher import publish
-    publish(name, release)
+    return publish(name, release)
 
 
 def main():
-    parser = ArgumentParser(prog="bd-publisher")
+    parser = ArgumentParser(prog="bd-publish")
 
     _add_args(parser)
 
@@ -65,8 +56,7 @@ def main():
         LOGGER.error(e)
         sys.exit(1)
 
-    if args.which == "publish":
-        sys.exit(not _publish(args.name, args.release))
+    sys.exit(not _publish(args.name, args.release))
 
 
 if __name__ == '__main__':

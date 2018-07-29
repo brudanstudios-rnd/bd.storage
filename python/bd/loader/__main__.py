@@ -15,6 +15,7 @@ LOGGER = logging.getLogger("bd.loader")
 def _add_args_load(subparsers):
     parser = subparsers.add_parser("load",
                                    help="Find and load all toolsets")
+    _add_common_args(parser)
 
     parser.add_argument("app_name",
                         help=("The name of the app to load "
@@ -40,6 +41,9 @@ def _add_args_load(subparsers):
 def _add_args_list(subparsers):
     parser = subparsers.add_parser("list",
                                    help="List all toolsets available for loading")
+
+    _add_common_args(parser)
+
     parser.add_argument("--devel",
                         help="Switch to a development mode",
                         action="store_true")
@@ -73,13 +77,14 @@ def _list(devel):
     list_toolsets(devel)
 
 
-def _add_args(parser):
-
+def _add_common_args(parser):
     parser.add_argument("-u", "--user", type=str,
                         help="Run as a specific user")
     parser.add_argument("-c", "--config-name", type=str,
                         help="Project configuration name")
 
+
+def _add_args(parser):
     subparsers = parser.add_subparsers()
 
     _add_args_load(subparsers)

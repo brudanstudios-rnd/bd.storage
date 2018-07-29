@@ -13,29 +13,20 @@ except Exception as e:
     sys.exit(1)
 
 
-def _add_args_create(subparsers):
-    parser = subparsers.add_parser("create",
-                                   help="Create a new toolset")
-    parser.add_argument("name",
+def _add_args(parser):
+    parser.add_argument("toolset_name",
                         help="The name of toolset to create",
                         type=str)
     parser.set_defaults(which="create")
 
 
-def _add_args(parser):
-
-    subparsers = parser.add_subparsers()
-
-    _add_args_create(subparsers)
-
-
 def _create(name):
     from bd.factory import create
-    create(name)
+    return create(name)
 
 
 def main():
-    parser = ArgumentParser(prog="bd-factory")
+    parser = ArgumentParser(prog="bd-create")
 
     _add_args(parser)
 
@@ -55,8 +46,7 @@ def main():
     if not config.load():
         return
 
-    if args.which == "create":
-        _create(args.name)
+    sys.exit(not _create(args.name))
 
 
 if __name__ == '__main__':
