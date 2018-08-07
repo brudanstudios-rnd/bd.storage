@@ -6,6 +6,7 @@ from argparse import ArgumentParser
 import logging
 import getpass
 
+import bd.config as config
 from bd.loader.environment import ENV
 from bd.exceptions import *
 
@@ -80,8 +81,6 @@ def _list(devel):
 def _add_common_args(parser):
     parser.add_argument("-u", "--user", type=str,
                         help="Run as a specific user")
-    parser.add_argument("-c", "--config-name", type=str,
-                        help="Project configuration name")
 
 
 def _add_args(parser):
@@ -102,29 +101,19 @@ def main():
 
     pipeline_dir = os.getenv("BD_PIPELINE_DIR")
     if not pipeline_dir:
-        logging.error("Undefined BD_PIPELINE_DIR environment variable. Please activate the pipeline")
+        LOGGER.error("Undefined BD_PIPELINE_DIR environment variable. Please activate the pipeline")
         sys.exit(1)
-
-    ENV.prepend("PYTHONPATH", os.path.join(pipeline_dir, "lib", "python"))
 
     user = os.getenv("BD_USER", getpass.getuser())
     ENV["BD_USER"] = args.user if args.user else user
 
-    config_name = os.getenv("BD_CONFIG_NAME")
-    if not config_name and args.config_name:
-        config_name = args.config_name
-
-    if not config_name:
-        logging.error("Please specify a project configuration name.")
+    if not os.getenv("BD_CONFIG_NAME"):
+        LOGGER.error("Please specify a project configuration name.")
         sys.exit(1)
-    else:
-        ENV["BD_CONFIG_NAME"] = config_name
-
-    import bd.config as config
 
     try:
         config.load()
-    except BDException as e:
+    except Error as e:
         LOGGER.error(e)
         sys.exit(1)
 

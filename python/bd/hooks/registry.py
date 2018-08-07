@@ -4,6 +4,7 @@ import weakref
 import types
 import logging
 
+from ..exceptions import InvalidCallbackError, HookNotFoundError, HookCallbackDeadError
 
 LOGGER = logging.getLogger("bd.hooks.registry")
 
@@ -16,6 +17,9 @@ class HookRegistry(object):
         self._forced_solo = set()
 
     def add_hook(self, name, callback, priority=50, force_solo=False):
+        if not callable(callback):
+            raise InvalidCallbackError(details={"hook_name": name,
+                                                "callback": str(callback)})
 
         if not force_solo and name in self._forced_solo:
             return
@@ -44,7 +48,26 @@ class HookRegistry(object):
         hooks = self._hooks.get(name)
 
         if not hooks:
-            return
+            raise HookNotFoundError(details={"hook_name": name})
+
+        # remove all the method callbacks bound to the deleted objects
+        for i in range(len(hooks)-1, -1, -1):
+
+            _, callback, obj_weakref = hooks[i]
+
+            # chech if it is a method and the owner is dead
+            if obj_weakref is not None and obj_weakref() is None:
+                del hooks[i]
+
+        # remove this hook from the registry
+        # if there is no callbacks left
+        if not hooks:
+            del self._hooks[name]
+            if name in self._sorted:
+                self._sorted.remove(name)
+            if name in self._forced_solo:
+                self._forced_solo.remove(name)
+            raise HookCallbackDeadError(details={"hook_name": name})
 
         if name not in self._sorted:
             hooks.sort(key=lambda x: x[0], reverse=True)

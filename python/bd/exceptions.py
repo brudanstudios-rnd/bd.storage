@@ -1,51 +1,128 @@
-class BDException(Exception):
-    message = "Generic runtime error."
+import sys
+import traceback
 
 
-class BDPipelineNotActivatedError(BDException):
+class Error(Exception):
 
-    message = ("Pipeline is not activated yet. "
+    default_message = "Unspecified error occured"
+
+    def __init__(self, message=None, details=None):
+
+        if not message:
+            message = self.default_message
+
+        self.message = message
+
+        if details is None:
+            details = {}
+
+        self.details = details
+
+        self.traceback = traceback.format_exc()
+
+    def __str__(self):
+        details = {}
+        for key, value in self.details.iteritems():
+            if isinstance(value, unicode):
+                value = value.encode(sys.getfilesystemencoding())
+            details[key] = value
+        return str(self.message.format(**details))
+
+
+class PipelineNotActivatedError(Error):
+    default_message = ("Pipeline is not activated yet. "
                "Check if 'BD_PIPELINE_DIR' environment variable exists")
 
-    def __init__(self):
-        super(BDPipelineNotActivatedError, self).__init__(self.message)
+
+class FilesystemError(Error):
+    pass
 
 
-class BDMandatoryKeyNotFound(BDException):
-
-    message = "Mandatory key '{}' could not be found in any of the configuration files"
-
-    def __init__(self, key):
-        super(BDMandatoryKeyNotFound, self).__init__(self.message.format(key))
+class FilesystemPathNotFoundError(FilesystemError):
+    default_message = "Filesystem path '{path}' not found"
 
 
-class BDFilesystemPathNotFound(BDException):
-    
-    message = "Filesystem path '{}' not found"
-    
-    def __init__(self, path):
-        super(BDFilesystemPathNotFound, self).__init__(self.message.format(str(path)))
+class OverwriteNotPermittedError(FilesystemError):
+    default_message = "You're not alowed to overwrite already existing path '{path}'"
 
 
-class BDFailedConfigParsing(BDException):
-
-    message = "Failed to parse configuration: {}"
-
-    def __init__(self, message):
-        super(BDFailedConfigParsing, self).__init__(self.message.format(message))
+class UnableToMakeDirectoryError(FilesystemError):
+    default_message = "Unable to make directory '{dirname}'. {exc_msg}"
 
 
-class BDProjectConfigurationNotFound(BDException):
+class ConfigurationError(Error):
+    pass
 
-    message = "Project configuration '{}' not found"
 
-    def __init__(self, config_name):
-        super(BDProjectConfigurationNotFound, self).__init__(self.message.format(config_name))
-        
-        
-class BDUnableToOverwrite(BDException):
-    
-    message = "Unable to overwrite '{}'"
-    
-    def __init__(self, path):
-        super(BDUnableToOverwrite, self).__init__(self.message.format(path))
+class MandatoryKeyNotFoundError(ConfigurationError):
+    default_message = "Mandatory key '{key}' could not be found in any of the configuration files"
+
+
+class FailedConfigParsingError(ConfigurationError):
+    default_message = "Failed to parse configuration: {exc_msg}"
+
+
+class ProjectConfigurationNotFoundError(ConfigurationError):
+    default_message = "Project configuration '{config_name}' not found"
+
+
+class ProjectConfigFilesNotFound(ConfigurationError):
+    default_message = "Project configuration '{config_name}' not found"
+
+
+class ConfigValueTypeError(ConfigurationError):
+    default_message = "Unsupported configuration value type '{type}' for key '{key}'"
+
+
+class ConfigDeserializationError(ConfigurationError):
+    default_message = "Unable to deserialize configuration from the environment variable '{var_name}'"
+
+
+class VCSError(Error):
+    pass
+
+
+class UnableToCloneRepositoryError(VCSError):
+    default_message = "Unable to clone '{repo_url}' into '{dirname}'. {exc_msg}"
+
+
+class RepositoryInitializationError(VCSError):
+    default_message = "Unable to initialize '{repo_url}' repository in '{dirname}'. {exc_msg}"
+
+
+class InvalidRepositoryUrlFormatError(VCSError):
+    default_message = "Invalid repository url format '{repo_url}'"
+
+
+class HookError(Error):
+    pass
+
+
+class InvalidCallbackError(HookError):
+    default_message = "Invalid callback '{callback}' provided for '{hook_name}' hook"
+
+
+class SearchPathsNotDefinedError(HookError):
+    default_message = "Hook search paths are not provided. " \
+              "Check if 'BD_HOOKPATH' environment variable exists"
+
+
+class HookLoadingError(HookError):
+    default_message = "Hook '{path}' failed to load. {exc_msg}"
+
+
+class HookRegistrationError(HookError):
+    default_message = "Failed to register hook from 'path'. {exc_msg}"
+
+
+class CallbackExecutionError(HookError):
+    default_message = "Failed to execute callback '{callback}' for hook '{hook_name}'. {exc_msg}"
+
+
+class HookNotFoundError(HookError):
+    default_message = "Unable to find a hook '{hook_name}'"
+
+
+class HookCallbackDeadError(HookError):
+    default_message = "All callback owners for hook '{hook_name}' are dead"
+

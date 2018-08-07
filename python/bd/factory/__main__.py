@@ -12,6 +12,12 @@ except Exception as e:
     print "ERROR: Unable to find 'git' command.", e
     sys.exit(1)
 
+import bd.config as config
+import bd.factory as factory
+from bd.exceptions import *
+
+LOGGER = logging.getLogger("bd.installer")
+
 
 def _add_args(parser):
     parser.add_argument("toolset_name",
@@ -21,8 +27,11 @@ def _add_args(parser):
 
 
 def _create(name):
-    from bd.factory import create
-    return create(name)
+    try:
+        factory.create(name)
+    except Error as e:
+        LOGGER.error(e)
+        sys.exit(1)
 
 
 def main():
@@ -36,17 +45,18 @@ def main():
 
     pipeline_dir = os.getenv("BD_PIPELINE_DIR")
     if not pipeline_dir:
-        logging.error("Undefined BD_PIPELINE_DIR environment variable. Please activate the pipeline.")
+        LOGGER.error("Undefined BD_PIPELINE_DIR environment variable. Please activate the pipeline.")
         sys.exit(1)
 
     os.environ["BD_USER"] = os.getenv("BD_USER", getpass.getuser())
 
-    from bd import config
+    try:
+        config.load()
+    except Error as e:
+        LOGGER.error(e)
+        sys.exit(1)
 
-    if not config.load():
-        return
-
-    sys.exit(not _create(args.name))
+    _create(args.name)
 
 
 if __name__ == '__main__':

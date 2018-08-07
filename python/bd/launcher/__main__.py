@@ -1,9 +1,6 @@
 import os
-import sys
 import re
 import logging
-import tempfile
-import cPickle
 import getpass
 from argparse import ArgumentParser
 
@@ -20,16 +17,10 @@ def _add_args(parser):
                         type=str)
     parser.add_argument("-u", "--user", type=str,
                         help="Run as a specific user")
-    parser.add_argument("-c", "--config-name", type=str,
-                        help="Project configuration name",
-                        required=True)
     parser.add_argument("-v", "--app-version",
                         help="Application version",
                         type=str,
                         default="default")
-    parser.add_argument("--command",
-                        help="Command to execute",
-                        type=str)
     parser.add_argument("--devel",
                         help="Switch to a development mode",
                         action="store_true")
@@ -37,18 +28,18 @@ def _add_args(parser):
 
 def _launch(app_name,
             app_version,
-            command=None,
-            devel=False):
+            devel=False,
+            unknown_args=[]):
 
     if not loader.load_toolsets(app_name, app_version, devel):
         sys.exit(1)
 
+    command = config.get_value('/'.join(["paths", app_name, app_version]))
+
     if not command:
-        command = config.get_value('/'.join(["dcc_paths", app_name, app_version]))
+        sys.exit(1)
 
-        if not command:
-            sys.exit(1)
-
+    command = ' '.join([command] + unknown_args)
     LOGGER.debug("Running '{}'".format(command))
 
     return os.system(command)
@@ -59,26 +50,27 @@ def main():
 
     _add_args(parser)
 
-    args = parser.parse_args()
+    args, unknown_args = parser.parse_known_args()
 
     logging.basicConfig(level=logging.INFO)
 
     user = os.getenv("BD_USER", getpass.getuser())
     os.environ["BD_USER"] = args.user if args.user else user
 
-    config_name = os.getenv("BD_CONFIG_NAME", "undefined")
-    os.environ["BD_CONFIG_NAME"] = args.config_name if args.config_name else config_name
+    if not os.getenv("BD_CONFIG_NAME"):
+        LOGGER.error("Please specify a project configuration name.")
+        sys.exit(1)
 
     try:
         config.load()
-    except BDException as e:
+    except Error as e:
         LOGGER.error(e)
         sys.exit(1)
 
     sys.exit(_launch(args.app_name,
                      args.app_version,
-                     args.command,
-                     args.devel))
+                     args.devel,
+                     unknown_args))
 
 
 if __name__ == '__main__':

@@ -4,6 +4,7 @@ import platform
 import cPickle
 
 from .loader import Loader
+from ..exceptions import *
 
 LOGGER = logging.getLogger("bd.config")
 
@@ -15,7 +16,15 @@ CURRENT_PLATFORM = {
 }.get(platform.system())
 
 
+_config = None
+
+
 def load():
+
+    global _config
+
+    if _config is not None:
+        return _config
 
     if "BD_OS" not in os.environ:
         os.environ["BD_OS"] = CURRENT_PLATFORM
@@ -23,21 +32,19 @@ def load():
     base64_config = os.getenv("BD_CONFIG_DATA")
 
     if base64_config:
-        config = cPickle.loads(base64_config.decode("base64", "strict"))
+        try:
+            _config = cPickle.loads(base64_config.decode("base64", "strict"))
+        except Exception:
+            raise ConfigDeserializationError(details={"var_name": "BD_CONFIG_DATA"})
     else:
-        config = Loader.load()
+        _config = Loader.load()
 
-        if not config:
-            return
+        os.environ["BD_CONFIG_DATA"] = cPickle.dumps(_config, 2).encode("base64", "strict")
 
-        os.environ["BD_CONFIG_DATA"] = cPickle.dumps(config, 2).encode("base64", "strict")
+    if "BD_PROJECT" not in os.environ and "project" in _config:
+        os.environ["BD_PROJECT"] = _config["project"]
 
-    if "BD_PROJECT" not in os.environ:
-        project = config.get("project", {}).get("name")
-        if project:
-            os.environ["BD_PROJECT"] = project
-
-    return config
+    return _config
 
 
 def get_value(key, default=None):

@@ -5,6 +5,8 @@ import fnmatch
 import hashlib
 import marshal
 
+import pathlib2
+
 LOGGER = logging.getLogger("bd.utils")
 
 
@@ -99,7 +101,8 @@ def cleanup(directory, name_patterns=None):
 
     """
 
-    directory = str(directory.resolve())
+    if isinstance(directory, pathlib2.Path):
+        directory = str(directory.resolve())
 
     def onerror(func, path, exc_info):
         """

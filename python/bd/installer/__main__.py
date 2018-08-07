@@ -6,8 +6,6 @@ from argparse import ArgumentParser
 import logging
 import getpass
 
-from bd.exceptions import *
-
 LOGGER = logging.getLogger("bd.installer")
 
 try:
@@ -15,6 +13,10 @@ try:
 except Exception as e:
     LOGGER.error("Unable to find 'git' command. {}".format(str(e)))
     sys.exit(1)
+
+import bd.config as config
+import bd.installer as installer
+from bd.exceptions import *
 
 
 def _add_args(parser):
@@ -32,8 +34,7 @@ def _add_args(parser):
 
 
 def _install(name, release, devel):
-    from bd.installer import install
-    return install(name, release, devel)
+    return installer.install(name, release, devel)
 
 
 def main():
@@ -52,11 +53,9 @@ def main():
 
     os.environ["BD_USER"] = os.getenv("BD_USER", getpass.getuser())
 
-    import bd.config as config
-
     try:
         config.load()
-    except BDException as e:
+    except Error as e:
         LOGGER.error(e)
         sys.exit(1)
 

@@ -186,11 +186,6 @@ def load_toolsets(
 
     proj_config_dir = Path(config.get_value("proj_config_dir"))
 
-    if not proj_config_dir.exists():
-        LOGGER.error("Project configuration directory"
-                     " '{}' doesn't exist".format(proj_config_dir))
-        return False
-
     # load hooks
     hook_search_paths = [
         Path(os.path.dirname(os.path.abspath(__file__))) / "hooks",
@@ -198,6 +193,8 @@ def load_toolsets(
     ]
 
     hooks.load_hooks(hook_search_paths)
+
+    ENV.prepend("PYTHONPATH", proj_config_dir / "resources" / "python")
 
     toolsets_to_load = get_available_toolsets(devel)
 
@@ -249,12 +246,6 @@ def list_toolsets(devel=False):
         devel  (bool): whether to load development toolsets first.
 
     """
-    proj_config_dir = Path(config.get_value("proj_config_dir"))
-    if not proj_config_dir.exists():
-        LOGGER.error("Project configuration directory"
-                     " '{}' doesn't exist".format(proj_config_dir))
-        return
-
     toolsets_to_load = get_available_toolsets(devel)
 
     if not toolsets_to_load:

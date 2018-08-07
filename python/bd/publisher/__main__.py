@@ -6,6 +6,7 @@ from argparse import ArgumentParser
 import logging
 import getpass
 
+import bd.config as config
 from bd.exceptions import *
 
 LOGGER = logging.getLogger("bd.publisher")
@@ -43,16 +44,14 @@ def main():
 
     pipeline_dir = os.getenv("BD_PIPELINE_DIR")
     if not pipeline_dir:
-        logging.error("Undefined BD_PIPELINE_DIR environment variable. Please activate the pipeline")
+        LOGGER.error("Undefined BD_PIPELINE_DIR environment variable. Please activate the pipeline")
         sys.exit(1)
 
     os.environ["BD_USER"] = os.getenv("BD_USER", getpass.getuser())
 
-    import bd.config as config
-
     try:
         config.load()
-    except BDException as e:
+    except Error as e:
         LOGGER.error(e)
         sys.exit(1)
 
