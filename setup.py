@@ -8,7 +8,7 @@ requirements = [
     "pluginbase==0.7",
     "requests==2.19.1",
     "pathlib2==2.3.2",
-    "--index-url=http://download.qt.io/snapshots/ci/pyside/5.11/latest/ pyside2 --trusted-host download.qt.io"
+    "pyside2==5.11.1"
 ]
 
 if "BD_DEVEL" in os.environ:
@@ -25,6 +25,9 @@ setup(
     author='Heorhi Samushyia',
     packages=find_packages("python"),
     install_requires=requirements,
+    dependency_links=[
+        'http://download.qt.io/snapshots/ci/pyside/5.11/latest/'
+    ],
     zip_safe=False,
     package_dir={"": "python"},
     package_data={'bd.loader': ['hooks/*']},
