@@ -5,8 +5,12 @@ import logging
 import tempfile
 
 import shutil
-from .. import utils
-from .. import config
+
+from bd import utils
+from bd import config
+
+# from .. import utils
+# from .. import config
 
 LOGGER = logging.getLogger(__name__)
 
@@ -50,10 +54,8 @@ def publish():
     tree = repo.heads.master.commit.tree
 
     accepted = map(lambda x: x.path, tree.trees + tree.blobs)
-
-    setup_path = os.path.join(repo_path, "setup.py")
-    if os.path.exists(setup_path):
-        accepted.append(setup_path)
+    if ".gitignore" in accepted:
+        accepted.remove(".gitignore")
 
     tmp_dir = tempfile.mktemp()
 
@@ -79,9 +81,17 @@ def publish():
         artifact_name = '{}/{}'.format(repo_name, latest_tag.name)
 
         repo.create_tag(artifact_name)
+
         repo.git.push("origin", artifact_name)
     except:
         shutil.rmtree(tmp_dir)
         raise
 
     return True
+
+
+if __name__ == '__main__':
+    os.environ["BD_PIPELINE_DIR"] = "/Volumes/asset/pipeline"
+    logging.basicConfig()
+    os.chdir("/Volumes/asset/pipeline/devel/geosam/bd")
+    publish()
