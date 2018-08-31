@@ -6,11 +6,8 @@ import tempfile
 
 import shutil
 
-from bd import utils
-from bd import config
-
-# from .. import utils
-# from .. import config
+from .. import utils
+from .. import config
 
 LOGGER = logging.getLogger(__name__)
 
@@ -64,7 +61,13 @@ def publish():
                         ignore=lambda src, names: [] if src != repo_path else
                         set(names).difference(accepted))
 
-        utils.compile(tmp_dir, ["setup.py"])
+        non_compilable = ["setup.py"]
+
+        metadata = utils.get_toolset_metadata(repo_path)
+        if metadata:
+            non_compilable.extend(metadata.get("keep_source"))
+
+        utils.compile(tmp_dir, non_compilable)
 
         repo = git.Repo.init(tmp_dir)
 
@@ -88,10 +91,3 @@ def publish():
         raise
 
     return True
-
-
-if __name__ == '__main__':
-    os.environ["BD_PIPELINE_DIR"] = "/Volumes/asset/pipeline"
-    logging.basicConfig()
-    os.chdir("/Volumes/asset/pipeline/devel/geosam/bd")
-    publish()
