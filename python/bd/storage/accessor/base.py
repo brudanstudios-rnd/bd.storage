@@ -14,15 +14,11 @@ class Accessor(object):
         return uid
 
     @abc.abstractmethod
-    def is_file(self, uid):
+    def write(self, uid):
         pass
 
     @abc.abstractmethod
-    def is_dir(self, uid):
-        pass
-
-    @abc.abstractmethod
-    def open(self, uid):
+    def read(self, uid):
         pass
 
     @abc.abstractmethod
@@ -30,9 +26,8 @@ class Accessor(object):
         pass
 
     @abc.abstractmethod
-    def list_dir(self, uid):
+    def exists(self, uid):
         pass
 
-    @abc.abstractmethod
-    def exists(self, uid):
+    def get_filesystem_path(self, uid, mode):
         pass

@@ -146,11 +146,13 @@ class bd_config_loader_TestCase(unittest.TestCase):
 
             config_dict = {
                 "pipeline_dir": None,
-                "configs_dir": "",
+                "presets_dir": "",
                 "development_dir": "",
-                "proj_config_dir": "",
-                "user_config_dir": "",
-                "git_repo_url_format": ""
+                "proj_preset_dir": "",
+                "user_overrides_dir": "",
+                "github_account": "",
+                "github_deploy_repo": "",
+                "is_centralized": ""
             }
 
             mock_metayaml_read.return_value = config_dict
@@ -158,18 +160,20 @@ class bd_config_loader_TestCase(unittest.TestCase):
 
     @mock.patch("bd.config.loader.os.path")
     @mock.patch("bd.config.loader.metayaml.read")
-    def test_not_defined_BD_CONFIG_NAME_environment_variable(self, mock_metayaml_read, mock_path):
+    def test_not_defined_BD_PRESET_NAME_environment_variable(self, mock_metayaml_read, mock_path):
         with mock.patch.dict("os.environ"):
 
             os.environ["BD_PIPELINE_DIR"] = "/Volumes/asset/pipeline"
 
             config_dict = {
                 "pipeline_dir": "",
-                "configs_dir": "",
+                "presets_dir": "",
                 "development_dir": "",
-                "proj_config_dir": "",
-                "user_config_dir": "",
-                "git_repo_url_format": ""
+                "proj_preset_dir": "",
+                "user_overrides_dir": "",
+                "github_account": "",
+                "github_deploy_repo": "",
+                "is_centralized": ""
             }
 
             mock_metayaml_read.return_value = config_dict
@@ -180,26 +184,28 @@ class bd_config_loader_TestCase(unittest.TestCase):
     @mock.patch("bd.config.loader.os.walk")
     @mock.patch("bd.config.loader.os.path")
     @mock.patch("bd.config.loader.metayaml.read")
-    def test_defined_BD_CONFIG_NAME_environment_variable(self, mock_metayaml_read, mock_path, mock_walk):
+    def test_defined_BD_PRESET_NAME_environment_variable(self, mock_metayaml_read, mock_path, mock_walk):
         with mock.patch.dict("os.environ"):
 
-            os.environ["BD_CONFIG_NAME"] = "default"
+            os.environ["BD_PRESET_NAME"] = "default"
             os.environ["BD_PIPELINE_DIR"] = "/Volumes/asset/pipeline"
 
             config_dict = {
                 "pipeline_dir": "",
-                "configs_dir": "",
+                "presets_dir": "",
                 "development_dir": "",
-                "proj_config_dir": "",
-                "user_config_dir": "",
-                "git_repo_url_format": ""
+                "proj_preset_dir": "",
+                "user_overrides_dir": "",
+                "github_account": "",
+                "github_deploy_repo": "",
+                "is_centralized": ""
             }
 
             mock_metayaml_read.return_value = config_dict
 
             # project configuration doesn't exist
             mock_path.exists.side_effect = [True, False]
-            self.assertRaises(ProjectConfigurationNotFoundError, bd.config.loader.Loader.load)
+            self.assertRaises(ProjectPresetNotFoundError, bd.config.loader.Loader.load)
 
             # 'config' directory not found inside project configuration directory
             mock_path.exists.side_effect = [True, True, False]
@@ -210,7 +216,7 @@ class bd_config_loader_TestCase(unittest.TestCase):
             mock_walk.return_value = [
                 ("", "", ["a.py", "b.py"])
             ]
-            self.assertRaises(ProjectConfigFilesNotFound, bd.config.loader.Loader.load)
+            self.assertRaises(ProjectConfigurationFilesNotFound, bd.config.loader.Loader.load)
 
             # configuration file could not be read
             mock_metayaml_read.side_effect = [config_dict, Exception()]

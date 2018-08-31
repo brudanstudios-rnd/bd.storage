@@ -5,15 +5,34 @@ import logging
 
 import metayaml
 
+myml = metayaml.metayaml
+
+
+def construct_mapping(self, node, deep=False):
+    """Enforce all numeric keys to become strings."""
+    data = self.construct_mapping_org(node, deep)
+    return myml.OrderedDict([
+        (
+            str(key) if isinstance(key, (int, float)) else key,
+            data[key]
+        ) for key in data
+    ])
+
+
+myml.OrderedDictYAMLLoader.construct_mapping_org = myml.OrderedDictYAMLLoader.construct_mapping
+myml.OrderedDictYAMLLoader.construct_mapping = construct_mapping
+
+
 from ..exceptions import *
 
-LOGGER = logging.getLogger("bd.config.loader")
+
+LOGGER = logging.getLogger(__name__)
 
 
 class Loader(object):
 
     @classmethod
-    def load(cls):
+    def load(cls, preset_name=None):
         if "BD_PIPELINE_DIR" not in os.environ:
             raise PipelineNotActivatedError()
 
@@ -41,11 +60,13 @@ class Loader(object):
 
         # check if all the mandatory keys exist
         for key in ("pipeline_dir",
-                    "configs_dir",
+                    "presets_dir",
                     "development_dir",
-                    "proj_config_dir",
-                    "user_config_dir",
-                    "git_repo_url_format"):
+                    "proj_preset_dir",
+                    "user_overrides_dir",
+                    "github_account",
+                    "github_deploy_repo",
+                    "is_centralized"):
 
             if key not in config:
                 raise MandatoryKeyNotFoundError(details={"key": key})
@@ -54,23 +75,26 @@ class Loader(object):
             if val is None:
                 raise ConfigValueTypeError(details={"key": key, "type": type(val)})
 
-        # BD_CONFIG_NAME could be undefined if there was no --config-name option specified
-        # in the command line
-        if "BD_CONFIG_NAME" in os.environ:
-            proj_config_dir = config["proj_config_dir"]
-            if not os.path.exists(proj_config_dir):
-                raise ProjectConfigurationNotFoundError(details={"config_name": os.environ["BD_CONFIG_NAME"]})
+        if not preset_name:
+            preset_name = os.getenv("BD_PRESET_NAME")
 
-            config_dir = os.path.join(proj_config_dir, "config")
+        # BD_PRESET_NAME could be undefined if there was no --config-name option specified
+        # in the command line
+        if preset_name:
+            proj_preset_dir = config["proj_preset_dir"]
+            if not os.path.exists(proj_preset_dir):
+                raise ProjectPresetNotFoundError(details={"preset_name": preset_name})
+
+            config_dir = os.path.join(proj_preset_dir, "config")
             if not os.path.exists(config_dir):
                 raise FilesystemPathNotFoundError(details={"path": config_dir})
 
             config_search_dirs = [config_dir]
 
-            user_config_dir = os.path.join(config["user_config_dir"], "config")
+            user_overrides_dir = os.path.join(config["user_overrides_dir"], "config")
 
-            if os.path.exists(user_config_dir):
-                config_search_dirs.append(user_config_dir)
+            if os.path.exists(user_overrides_dir):
+                config_search_dirs.append(user_overrides_dir)
 
             # recursively collect all the config file paths
             config_files = []
@@ -82,7 +106,7 @@ class Loader(object):
                         config_files.append(os.path.join(root_dir, filename))
 
             if not config_files:
-                raise ProjectConfigFilesNotFound(details={"config_name": os.environ["BD_CONFIG_NAME"]})
+                raise ProjectConfigurationFilesNotFound(details={"preset_name": preset_name})
 
             try:
                 # read config data
@@ -99,8 +123,11 @@ class Loader(object):
             if "project" not in config:
                 raise MandatoryKeyNotFoundError(details={"key": "project"})
         else:
-            config.pop("proj_config_dir", None)
-            config.pop("user_config_dir", None)
+            config.pop("proj_preset_dir", None)
+            config.pop("user_overrides_dir", None)
+
+        if "BD_DEVEL_DIR" in os.environ:
+            config["development_dir"] = os.getenv("BD_DEVEL_DIR").replace("\\", "/")
 
         config.pop("env", None)
 

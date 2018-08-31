@@ -1,9 +1,7 @@
 import os
 import logging
 
-import pathlib2
-
-LOGGER = logging.getLogger("bd.loader.environment")
+LOGGER = logging.getLogger(__name__)
 
 
 class Environment(object):
@@ -15,12 +13,12 @@ class Environment(object):
         return os.environ.get(name, default)
 
     def putenv(self, name, value):
-        os.environ[name] = self._convert_value(value)
+        os.environ[name] = str(value)
         self._modified.add(name)
 
     def prepend(self, name, value):
         old_value = os.environ.get(name)
-        new_value = self._convert_value(value)
+        new_value = str(value)
 
         if not old_value:
             os.environ[name] = new_value
@@ -33,7 +31,7 @@ class Environment(object):
 
     def append(self, name, value):
         old_value = os.environ.get(name)
-        new_value = self._convert_value(value)
+        new_value = str(value)
 
         if not old_value:
             os.environ[name] = new_value
@@ -43,11 +41,6 @@ class Environment(object):
                 os.environ[name] = os.pathsep.join(old_value_parts + [new_value])
 
         self._modified.add(name)
-
-    def _convert_value(self, value):
-        if isinstance(value, pathlib2.Path) and value.exists():
-            value = value.resolve()
-        return str(value)
 
     def __getitem__(self, name):
         return self.getenv(name)

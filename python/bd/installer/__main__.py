@@ -6,13 +6,7 @@ from argparse import ArgumentParser
 import logging
 import getpass
 
-LOGGER = logging.getLogger("bd.installer")
-
-try:
-    import git
-except Exception as e:
-    LOGGER.error("Unable to find 'git' command. {}".format(str(e)))
-    sys.exit(1)
+LOGGER = logging.getLogger(__name__)
 
 import bd.config as config
 import bd.installer as installer
@@ -24,17 +18,14 @@ def _add_args(parser):
     parser.add_argument("name",
                         help="The name of toolset to install",
                         type=str)
-    parser.add_argument("-r", "--release",
-                        help="Repository release(tag) name to clone",
+    parser.add_argument("version",
+                        help="Repository version name",
                         type=str)
-    parser.add_argument("--devel",
-                        help="Switch to a development mode",
-                        action="store_true")
     parser.set_defaults(which="install")
 
 
-def _install(name, release, devel):
-    return installer.install(name, release, devel)
+def _install(name, release):
+    return installer.install(name, release)
 
 
 def main():
@@ -59,9 +50,7 @@ def main():
         LOGGER.error(e)
         sys.exit(1)
 
-    sys.exit(not _install(args.name,
-                          args.release,
-                          args.devel))
+    sys.exit(not _install(args.name, args.version))
 
 
 if __name__ == '__main__':

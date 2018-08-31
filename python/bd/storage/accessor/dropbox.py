@@ -6,9 +6,9 @@ from .base import Accessor
 LOGGER = logging.getLogger(__name__)
 
 
-class FileSystemAccessor(Accessor):
+class DropboxAccessor(Accessor):
 
-    name = "filesystem-accessor"
+    name = "dropbox-accessor"
 
     def __init__(self, root):
         self._root = root
@@ -26,10 +26,12 @@ class FileSystemAccessor(Accessor):
         return '/'.join([self._root, uid])
 
     def write(self, uid, data):
-        return open(self.resolve(uid), "wb").write(data)
+        with open(self.resolve(uid), "wb") as f:
+            return f.write(data)
 
     def read(self, uid):
-        return open(self.resolve(uid), "rb").read()
+        with open(self.resolve(uid), "rb") as f:
+            return f.read()
 
     def make_dir(self, uid):
         os.mkdir(self.resolve(uid))
@@ -38,4 +40,4 @@ class FileSystemAccessor(Accessor):
         return os.path.exists(self.resolve(uid))
 
     def get_filesystem_path(self, uid, mode):
-        return self.resolve(uid)
+        return

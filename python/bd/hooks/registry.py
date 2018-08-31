@@ -6,7 +6,7 @@ import logging
 
 from ..exceptions import InvalidCallbackError, HookNotFoundError, HookCallbackDeadError
 
-LOGGER = logging.getLogger("bd.hooks.registry")
+LOGGER = logging.getLogger(__name__)
 
 
 class HookRegistry(object):

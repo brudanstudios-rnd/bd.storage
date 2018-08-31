@@ -1,9 +1,11 @@
+__all__ = ["Schema"]
+
 import os
 import logging
 
 import pathlib2
 
-import bd.config as config
+from ... import config
 
 from . import constants as c
 
@@ -27,9 +29,9 @@ class Schema(object):
 
     @classmethod
     def new(cls, schema_name, accessor):
-        proj_config_dir = pathlib2.Path(config.get_value("proj_config_dir"))
+        proj_preset_dir = pathlib2.Path(config.get_value("proj_preset_dir"))
 
-        schema_dir = proj_config_dir / "schemas" / schema_name
+        schema_dir = proj_preset_dir / "schemas" / schema_name
 
         if not schema_dir.exists():
             LOGGER.error("Schema directory "
@@ -65,13 +67,8 @@ class Schema(object):
                 labels = match.group(1).split(':')
                 self._anchor_items[frozenset(labels)] = SchemaAnchor.new(current_dir / filename)
 
-    def _get_anchor_item(self, labels):
+    def get_anchor_item(self, labels):
         return self._anchor_items.get(frozenset(labels))
-
-    def get_anchor_path(self, labels, context):
-        schema_item = self._get_anchor_item(labels)
-        if schema_item:
-            return schema_item.resolve(context)
 
     def _build_item(self, item, context):
 
@@ -116,13 +113,11 @@ class Schema(object):
 
         return True
 
-    def _build_triggered_items(self, lables, context):
+    def build_structure(self, labels, context):
+        schema_item = self._anchor_items.get(frozenset(labels))
+        if schema_item:
+            self._build_item(schema_item, context)
+
         for schema_item in SchemaItem.items():
-            if schema_item.is_triggered(lables):
+            if schema_item.is_triggered(labels):
                 self._build_item(schema_item, context)
-
-    def create_dir_structure(self, labels, context):
-        schema_item = self._get_anchor_item(labels)
-        if schema_item is None or self._build_item(schema_item, context):
-            self._build_triggered_items(labels, context)
-

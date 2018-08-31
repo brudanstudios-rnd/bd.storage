@@ -79,7 +79,7 @@ class bd_factory_init_all_TestCase(unittest.TestCase):
     def test_config_invalid_repo_url_format(self, mock_os, mock_config):
         mock_os.makedirs.return_value = None
         mock_config.get_value.return_value = "wrong_repository_url_format"
-        self.assertRaises(InvalidRepositoryUrlFormatError,
+        self.assertRaises(UnableToCloneRepositoryError,
                           bd.factory.factory._init_all,
                           "toolset_directory_path")
 
@@ -136,12 +136,6 @@ class bd_factory_init_repository_TestCase(unittest.TestCase):
                           bd.factory.factory._init_repository,
                           "toolset_directory_path",
                           "git@github.com:whatever/repository.git")
-
-    def test_invalid_repo_url_format(self):
-        self.assertRaises(InvalidRepositoryUrlFormatError,
-                          bd.factory.factory._init_repository,
-                          "toolset_directory_path",
-                          "wrong_repository_url_format")
 
 
 if __name__ == '__main__':

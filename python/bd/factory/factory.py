@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 __all__ = ["create"]
 import os
-import re
 import logging
 
 import git
@@ -10,18 +9,14 @@ from .. import config
 from .. exceptions import *
 from .. import utils
 
-LOGGER = logging.getLogger("bd.factory.factory")
-
-GIT_REPO_URL_REGEX = re.compile(r"((git|ssh|http(s)?)|(git@[\w\.]+))(:(//)?)([\w\.@\:/\-~]+)(\.git)(/)?")
+LOGGER = logging.getLogger(__name__)
 
 
-def _init_repository(toolset_dir, repo_url_format):
+def _init_repository(toolset_dir, github_account):
 
     repo_name = os.path.basename(toolset_dir)
 
-    repo_url = repo_url_format.format(name=repo_name)
-    if not GIT_REPO_URL_REGEX.match(repo_url):
-        raise InvalidRepositoryUrlFormatError(repo_url)
+    repo_url = "git@github.com:{}/{}.git".format(github_account, repo_name)
 
     repo = None
 
@@ -53,16 +48,14 @@ def _init_repository(toolset_dir, repo_url_format):
 
 def _init_all(toolset_dir):
     try:
-        os.makedirs(toolset_dir, exist_ok=True)
+        os.makedirs(toolset_dir)
     except OSError as e:
         raise UnableToMakeDirectoryError(details={"dirname": toolset_dir,
                                                   "exc_msg": str(e)})
 
-    repo_url_format = config.get_value("git_repo_url_format")
+    github_account = config.get_value("github_account")
 
-    repo_url = repo_url_format.format(name="bd-toolset-template")
-    if not GIT_REPO_URL_REGEX.match(repo_url):
-        raise InvalidRepositoryUrlFormatError(details={"repo_url": repo_url})
+    repo_url = "git@github.com:{}/bd-toolset-template.git".format(github_account)
 
     try:
         LOGGER.info("Cloning '{}' repository ...".format(repo_url))
@@ -75,16 +68,16 @@ def _init_all(toolset_dir):
 
     utils.cleanup(toolset_dir, [".git"])
 
-    _init_repository(toolset_dir, repo_url_format)
+    _init_repository(toolset_dir, github_account)
 
 
 def create(name):
 
-    development_dir = config.get_value("development_dir")
+    development_dir = utils.resolve(config.get_value("development_dir"))
     if not os.path.exists(development_dir):
         raise FilesystemPathNotFoundError(details={"path": development_dir})
 
-    toolset_dir = os.path.join(os.path.abspath(development_dir), "toolbox", name)
+    toolset_dir = os.path.join(development_dir, name)
     if os.path.exists(toolset_dir):
         raise OverwriteNotPermittedError(details={"path": toolset_dir})
 

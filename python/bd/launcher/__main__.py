@@ -5,10 +5,11 @@ import getpass
 from argparse import ArgumentParser
 
 import bd.config as config
-import bd.loader as loader
+import bd.launcher as launcher
+
 from bd.exceptions import *
 
-LOGGER = logging.getLogger("bd.launcher")
+LOGGER = logging.getLogger(__name__)
 
 
 def _add_args(parser):
@@ -19,30 +20,10 @@ def _add_args(parser):
                         help="Run as a specific user")
     parser.add_argument("-v", "--app-version",
                         help="Application version",
-                        type=str,
-                        default="default")
+                        type=str)
     parser.add_argument("--devel",
                         help="Switch to a development mode",
                         action="store_true")
-
-
-def _launch(app_name,
-            app_version,
-            devel=False,
-            unknown_args=[]):
-
-    if not loader.load_toolsets(app_name, app_version, devel):
-        sys.exit(1)
-
-    command = config.get_value('/'.join(["paths", app_name, app_version]))
-
-    if not command:
-        sys.exit(1)
-
-    command = ' '.join([command] + unknown_args)
-    LOGGER.debug("Running '{}'".format(command))
-
-    return os.system(command)
 
 
 def main():
@@ -57,8 +38,8 @@ def main():
     user = os.getenv("BD_USER", getpass.getuser())
     os.environ["BD_USER"] = args.user if args.user else user
 
-    if not os.getenv("BD_CONFIG_NAME"):
-        LOGGER.error("Please specify a project configuration name.")
+    if not os.getenv("BD_PRESET_NAME"):
+        LOGGER.error("Please specify a project preset name.")
         sys.exit(1)
 
     try:
@@ -67,10 +48,10 @@ def main():
         LOGGER.error(e)
         sys.exit(1)
 
-    sys.exit(_launch(args.app_name,
-                     args.app_version,
-                     args.devel,
-                     unknown_args))
+    sys.exit(launcher.launch(args.app_name,
+                             args.app_version,
+                             args.devel,
+                             unknown_args))
 
 
 if __name__ == '__main__':

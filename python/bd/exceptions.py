@@ -62,12 +62,12 @@ class FailedConfigParsingError(ConfigurationError):
     default_message = "Failed to parse configuration: {exc_msg}"
 
 
-class ProjectConfigurationNotFoundError(ConfigurationError):
-    default_message = "Project configuration '{config_name}' not found"
+class ProjectPresetNotFoundError(ConfigurationError):
+    default_message = "Project preset '{preset_name}' not found"
 
 
-class ProjectConfigFilesNotFound(ConfigurationError):
-    default_message = "Project configuration '{config_name}' not found"
+class ProjectConfigurationFilesNotFound(ConfigurationError):
+    default_message = "Project configuration files not found for preset '{preset_name}'"
 
 
 class ConfigValueTypeError(ConfigurationError):

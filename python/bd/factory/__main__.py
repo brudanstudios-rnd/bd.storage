@@ -16,7 +16,7 @@ import bd.config as config
 import bd.factory as factory
 from bd.exceptions import *
 
-LOGGER = logging.getLogger("bd.installer")
+LOGGER = logging.getLogger(__name__)
 
 
 def _add_args(parser):

@@ -4,26 +4,24 @@ __all__ = ["load_toolsets", "list_toolsets", "get_available_toolsets"]
 import os
 import logging
 
-from pathlib2 import Path
-
 from .. import config
 from .. import hooks
-
+from .. import installer
 from .environment import ENV
 from .. import utils
 
 
-LOGGER = logging.getLogger("bd.loader.loader")
+LOGGER = logging.getLogger(__name__)
 
 
 def _execute_bd_init(directory):
 
-    init_path = directory / "bd_init.py"
+    init_path = os.path.join(directory, "bd_init.py")
 
-    if not init_path.exists():
-        init_path = directory / "bd_init.pyc"
+    if not os.path.exists(init_path):
+        init_path = os.path.join(directory, "bd_init.pyc")
 
-        if not init_path.exists():
+        if not os.path.exists(init_path):
             return
 
     LOGGER.debug("Calling initializer '{}'".format(init_path))
@@ -33,21 +31,21 @@ def _execute_bd_init(directory):
     try:
         utils.execute_file(init_path, globals(), locals())
     except Exception:
-        LOGGER.exception("Unable to execute initializer due to the error:")
+        LOGGER.exception("Unable to execute initializer due to an error:")
 
 
 def _load_app_environment(toolset_dir, app_name, app_version):
 
     # find a directory inside the toolset for the specified app
     # e.g. houdini, maya, ...
-    app_dir = toolset_dir / app_name
-    if not app_dir or not app_dir.is_dir():
+    app_dir = os.path.join(toolset_dir, app_name)
+    if not app_dir or not os.path.isdir(app_dir):
         return
 
     # every app directory stores a version of the
     # matching application version
     # e.g. 2018, 16.0.736, ...
-    app_dir_versions = sorted(app_dir.iterdir(), reverse=True)
+    app_dir_versions = sorted(os.listdir(app_dir), reverse=True)
 
     if not app_dir_versions:
         LOGGER.error("Unable to find any versioned "
@@ -60,14 +58,10 @@ def _load_app_environment(toolset_dir, app_name, app_version):
     app_version_dir = None
 
     if app_version:
-        app_version_dir = app_dir / app_version
+        app_version_dir = os.path.join(app_dir, app_version)
 
-    if not app_version_dir or not app_version_dir.exists():
-        latest_app_version = next((version_dir.name
-                                    for version_dir in app_dir_versions
-                                    if version_dir.is_dir()))
-
-        app_version_dir = app_dir / latest_app_version
+    if not app_version_dir or not os.path.exists(app_version_dir):
+        app_version_dir = os.path.join(app_dir, app_dir_versions[0])
 
     hooks.execute("bd.loader.initialize.{}".format(app_name), app_version_dir, ENV).all()
 
@@ -77,8 +71,8 @@ def _load_app_environment(toolset_dir, app_name, app_version):
 def _load_python_environment(toolset_dir):
 
     # find a 'python' directory inside the toolset
-    python_dir = toolset_dir / "python"
-    if not python_dir.is_dir():
+    python_dir = os.path.join(toolset_dir, "python")
+    if not os.path.isdir(python_dir):
         return
 
     # execute initializer inside app directory
@@ -124,8 +118,9 @@ def get_available_toolsets(devel=False):
         toolset_version = "devel"
 
         if devel:
-            devel_toolset_dir = Path(config.get_value("development_dir")) / "toolbox" / toolset_name
-            if devel_toolset_dir.exists():
+            development_dir = utils.resolve(config.get_value("development_dir"))
+            devel_toolset_dir = os.path.join(development_dir, "toolbox", toolset_name)
+            if os.path.exists(devel_toolset_dir):
                 toolset_dir = devel_toolset_dir
 
         if not toolset_dir:
@@ -138,25 +133,37 @@ def get_available_toolsets(devel=False):
             if toolset_version == "devel":
                 continue
 
-            toolset_dir = Path(config.get_value("pipeline_dir")) / "toolbox" / toolset_name / toolset_version
-            if not toolset_dir.exists():
-                LOGGER.error("Unable to find revision '{}' "
-                             "of '{}' toolset".format(toolset_version, toolset_name))
-                return
+            pipeline_dir = utils.resolve(config.get_value("pipeline_dir"))
 
-            revision_md5_path = toolset_dir / ".md5"
-            if not revision_md5_path.exists():
+            toolset_dir = os.path.join(pipeline_dir, "toolbox", toolset_name, toolset_version)
+
+            if not os.path.exists(toolset_dir):
+
+                if not config.get_value("is_centralized", False):
+                    if not installer.install(toolset_name, toolset_version):
+                        LOGGER.error("Unable to install revision '{}' "
+                                     "of '{}' toolset".format(toolset_version, toolset_name))
+                        return
+                else:
+                    LOGGER.error("Revision '{}' "
+                                 "of '{}' toolset is not installed yet".format(toolset_version, toolset_name))
+
+                    return
+
+            revision_sha256_path = os.path.join(toolset_dir, ".sha256")
+            if not os.path.exists(revision_sha256_path):
                 LOGGER.error("Revision '{}' of '{}' toolset has missing "
                              "checksum file. Please make sure the "
                              "synchronization is finished.".format(toolset_version, toolset_name))
                 return
 
-            revision_md5 = revision_md5_path.read_text()
+            with open(revision_sha256_path, "r") as f:
+                revision_sha256 = f.read()
 
-            if revision_md5 != utils.get_directory_md5(toolset_dir):
+            if revision_sha256 != utils.get_directory_hash(toolset_dir):
                 LOGGER.error("Unable to load revision '{}' "
                              "of '{}' toolset. Checksum mismatch. Please make sure the "
-                             "synchronization is finished.".format(toolset_version, toolset_name))
+                             "toolset is installed correctly.".format(toolset_version, toolset_name))
                 return
 
         toolsets_to_load.append((toolset_name, toolset_version, toolset_dir))
@@ -184,17 +191,19 @@ def load_toolsets(
     LOGGER.info("app_name: {0} | app_version: {1}".format(app_name,
                                                           app_version))
 
-    proj_config_dir = Path(config.get_value("proj_config_dir"))
+    proj_preset_dir = utils.resolve(config.get_value("proj_preset_dir"))
+
+    this_directory = os.path.dirname(os.path.abspath(__file__))
 
     # load hooks
     hook_search_paths = [
-        Path(os.path.dirname(os.path.abspath(__file__))) / "hooks",
-        proj_config_dir / "hooks"
+        os.path.join(this_directory, "hooks"),
+        os.path.join(proj_preset_dir, "hooks")
     ]
 
     hooks.load_hooks(hook_search_paths)
 
-    ENV.prepend("PYTHONPATH", proj_config_dir / "resources" / "python")
+    ENV.prepend("PYTHONPATH", os.path.join(proj_preset_dir, "resources", "python"))
 
     toolsets_to_load = get_available_toolsets(devel)
 
@@ -203,7 +212,7 @@ def load_toolsets(
 
     LOGGER.info("Loading toolsets:")
 
-    ENV.putenv("BD_HOOKPATH", proj_config_dir / "hooks")
+    ENV.putenv("BD_HOOKPATH", os.path.join(proj_preset_dir, "hooks"))
 
     all_toolset_names = frozenset([name for name, _, _ in toolsets_to_load])
 
@@ -227,8 +236,8 @@ def load_toolsets(
         if app_name != "python":
             _load_app_environment(toolset_dir, app_name, app_version)
 
-        hooks_dir = toolset_dir / "hooks"
-        if hooks_dir.is_dir():
+        hooks_dir = os.path.join(toolset_dir, "hooks")
+        if os.path.isdir(hooks_dir):
             ENV.append("BD_HOOKPATH", hooks_dir)
 
         ENV[toolset_name.upper().replace("-", "_") + "_DIR"] = toolset_dir

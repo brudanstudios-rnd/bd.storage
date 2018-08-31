@@ -9,7 +9,7 @@ import getpass
 import bd.config as config
 from bd.exceptions import *
 
-LOGGER = logging.getLogger("bd.publisher")
+LOGGER = logging.getLogger(__name__)
 
 try:
     import git
@@ -18,27 +18,15 @@ except Exception as e:
     sys.exit(1)
 
 
-def _add_args(parser):
-    parser.add_argument("name",
-                        help="The name of toolset to publish",
-                        type=str)
-    parser.add_argument("-r", "--release",
-                        help="Repository release(tag) name to clone",
-                        type=str)
-    parser.set_defaults(which="publish")
-
-
-def _publish(name, release):
+def _publish():
     from bd.publisher import publish
-    return publish(name, release)
+    return publish()
 
 
 def main():
     parser = ArgumentParser(prog="bd-publish")
 
-    _add_args(parser)
-
-    args = parser.parse_args()
+    parser.parse_args()
 
     logging.basicConfig(level=logging.INFO)
 
@@ -55,7 +43,7 @@ def main():
         LOGGER.error(e)
         sys.exit(1)
 
-    sys.exit(not _publish(args.name, args.release))
+    sys.exit(not _publish())
 
 
 if __name__ == '__main__':

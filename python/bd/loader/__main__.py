@@ -10,7 +10,7 @@ import bd.config as config
 from bd.loader.environment import ENV
 from bd.exceptions import *
 
-LOGGER = logging.getLogger("bd.loader")
+LOGGER = logging.getLogger(__name__)
 
 
 def _add_args_load(subparsers):
@@ -107,8 +107,8 @@ def main():
     user = os.getenv("BD_USER", getpass.getuser())
     ENV["BD_USER"] = args.user if args.user else user
 
-    if not os.getenv("BD_CONFIG_NAME"):
-        LOGGER.error("Please specify a project configuration name.")
+    if not os.getenv("BD_PRESET_NAME"):
+        LOGGER.error("Please specify a project preset name.")
         sys.exit(1)
 
     try:

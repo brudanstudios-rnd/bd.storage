@@ -1,7 +1,7 @@
 import logging
 from ..exceptions import CallbackExecutionError
 
-LOGGER = logging.getLogger("bd.hooks.registry")
+LOGGER = logging.getLogger(__name__)
 
 
 class HookExecutor(object):

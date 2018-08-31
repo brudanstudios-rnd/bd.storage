@@ -7,29 +7,22 @@ import tempfile
 from .. import config
 from .. import hooks
 from ..exceptions import *
-
+from .accessor.base import Accessor
 from .accessor.filesystem import FileSystemAccessor
-from .structure.schema import SchemaStructure
-from .structure.proxy import ProxyStructure
+from .schema import Schema
 
 
 LOGGER = logging.getLogger(__name__)
 
 
-class StorageRegistry(object):
+class AccessorRegistry(object):
 
     def __init__(self):
         self._structures = {}
         self._accessors = {}
 
-    def add_structure(self, name, structure):
-        self._structures[name] = structure
-
     def add_accessor(self, name, accessor):
         self._accessors[name] = accessor
-
-    def get_structure(self, name):
-        return self._structures.get(name)
 
     def get_accessor(self, name):
         return self._accessors.get(name)
@@ -37,10 +30,10 @@ class StorageRegistry(object):
 
 class Storage(object):
 
-    def __init__(self, name, accessor, structure, mask="*", type="local"):
+    def __init__(self, name, accessor, schema, mask="*", type="local"):
         self._name = name
         self._accessor = accessor
-        self._structure = structure
+        self._schema = schema
         self._label_patterns = map(lambda x: x.strip(), mask.split())
         self._type = type
 
@@ -50,8 +43,8 @@ class Storage(object):
     def get_accessor(self):
         return self._accessor
 
-    def get_structure(self):
-        return self._structure
+    def get_schema(self):
+        return self._schema
 
     def get_type(self):
         return self._type
@@ -60,27 +53,20 @@ class Storage(object):
         if not self.match(labels):
             return
 
-        uid = self._structure.get_uid(labels, context)
-        if not uid:
+        schema_item = self._schema.get_anchor_item(labels)
+        if not schema_item:
             return
 
+        uid = schema_item.resolve(context)
         if not self._accessor.exists(uid):
             return
 
         return StorageItem(labels, context, uid, self)
 
-    def new_item(self, labels, context):
-        if not self.match(labels):
-            return
-
-        uid = self._structure.get_uid(labels, context)
-        if not uid:
-            return
-
-        return StorageItem(labels, context, uid, self)
-
     def put_item(self, source_item):
-        if source_item.get_storage() is self:
+        source_storage = source_item.get_storage()
+
+        if source_storage is self:
             return source_item
 
         labels, context = source_item.get_labels(), source_item.get_context()
@@ -88,8 +74,12 @@ class Storage(object):
         if not self.match(source_item.get_labels()):
             return
 
-        uid = self._structure.get_uid(labels, context)
-        if not uid:
+        target_schema_item = self._schema.get_anchor_item(labels)
+        if not target_schema_item:
+            return
+
+        uid = target_schema_item.resolve(context)
+        if self._accessor.exists(uid):
             return
 
         target_item = StorageItem(labels, context, uid, self)
@@ -97,11 +87,10 @@ class Storage(object):
         if self._accessor.exists(uid):
             return target_item
 
-        self._structure.make_dirs(labels, context)
+        self._schema.build_structure(labels, context)
 
-        with source_item.open("rb") as in_f:
-            with target_item.open("wb") as out_f:
-                out_f.write(in_f.read())
+        data = source_item.get_accessor().read(source_item.get_uid())
+        self._accessor.write(uid, data)
 
         return target_item
 
@@ -137,12 +126,11 @@ class Storage(object):
 
 class StorageItem(object):
 
-    def __init__(self, labels, context, uid, storage):
+    def __init__(self, labels, context, uid, storage=None):
         self._labels = labels
         self._context = context
         self._uid = uid
         self._storage = storage
-        self._filesystem_path = None
 
     def get_labels(self):
         return self._labels
@@ -156,21 +144,10 @@ class StorageItem(object):
     def get_storage(self):
         return self._storage
 
-    def get_filesystem_path(self):
-        if self._filesystem_path:
-           return self._filesystem_path
-
-        path = self._storage.get_accessor().get_filesystem_path(self._uid)
-
-        if not path:
-            raise Exception("Unable to retrieve filesystem path for item from remote storage")
-
-        self._filesystem_path = path
-
-        return self._filesystem_path
-
-    def open(self, mode="rb"):
-        return self._storage.get_accessor().open(self._uid, mode)
+    def get_accessor(self):
+        if not self._storage:
+            return FileSystemAccessor.new()
+        return self._storage.get_accessor()
 
     def __str__(self):
         return self.__repr__()
@@ -187,21 +164,17 @@ class StorageItem(object):
 class StoragePool(object):
 
     def __init__(self):
-        self._tmp_storage = None
         self._storages = None
+        self._get_storages()
 
-        self.get_storages()
-
-    def get_storages(self):
+    def _get_storages(self):
         if not self._storages:
 
             self._storages = OrderedDict()
 
-            registry = StorageRegistry()
+            registry = AccessorRegistry()
 
             registry.add_accessor(FileSystemAccessor.name, FileSystemAccessor)
-            registry.add_structure(ProxyStructure.name, ProxyStructure)
-            registry.add_structure(SchemaStructure.name, SchemaStructure)
 
             try:
                 hooks.load_hooks()
@@ -210,12 +183,6 @@ class StoragePool(object):
             else:
                 hooks.execute("storage.register.structure", registry).all()
                 hooks.execute("storage.register.accessor", registry).all()
-
-            tmp_accessor = FileSystemAccessor.new(root=tempfile.gettempdir())
-            tmp_structure = ProxyStructure.new(tmp_accessor)
-            self._tmp_storage = Storage("_tmp_storage",
-                                        tmp_accessor,
-                                        tmp_structure)
 
             cfg_storages = config.get_value("storage")
 
@@ -227,22 +194,18 @@ class StoragePool(object):
 
                 accessor = accessor_cls.new(**cfg_storage["accessor"].get("kwargs", {}))
 
-                structure_cls = registry.get_structure(cfg_storage["structure"]["name"])
-                if not structure_cls:
-                    continue
-
-                structure = structure_cls.new(accessor, **cfg_storage["structure"].get("kwargs", {}))
+                schema = Schema.new(cfg_storage["schema"], accessor)
 
                 self._storages[name] = Storage(name,
                                                accessor,
-                                               structure,
+                                               schema,
                                                cfg_storage["mask"],
                                                cfg_storage["type"])
 
         return self._storages.values()
 
-    def get_matching_storages(self, labels):
-        for storage in self.get_storages():
+    def _get_matching_storages(self, labels):
+        for storage in self._get_storages():
 
             if not storage.match(labels):
                 continue
@@ -250,7 +213,7 @@ class StoragePool(object):
             yield storage
 
     def get_item(self, labels, context, replicate=False):
-        for storage in self.get_matching_storages(labels):
+        for storage in self._get_matching_storages(labels):
 
             item = storage.get_item(labels, context)
             if not item:
@@ -264,10 +227,10 @@ class StoragePool(object):
     def put_item(self, source_item):
         target_item = None
 
-        for storage in reversed(list(self.get_matching_storages(source_item.get_labels()))):
+        for storage in reversed(list(self._get_matching_storages(source_item.get_labels()))):
             target_item = storage.put_item(source_item) or target_item
 
         return target_item
 
-    def new_item(self, labels, context):
-        return self._tmp_storage.new_item(labels, context)
+    def new_item(self, labels, context, path=None):
+        return StorageItem(labels, context, path, None)

@@ -4,10 +4,9 @@ import shutil
 import fnmatch
 import hashlib
 import marshal
+import compileall
 
-import pathlib2
-
-LOGGER = logging.getLogger("bd.utils")
+LOGGER = logging.getLogger(__name__)
 
 
 def minify(input_file):
@@ -25,25 +24,46 @@ def minify(input_file):
         out_file.write(output)
 
 
-def get_directory_md5(directory):
+def compile(root_dir, cmpl_ignored=[]):
 
-    md5_hash = hashlib.md5()
+    # minify, compile and delete .py files
+    for current_dir, _, filenames in os.walk(root_dir):
 
-    if not directory.is_dir():
+        for filename in filenames:
+
+            if not filename.endswith(".py"):
+                continue
+
+            is_ignored = False
+            if cmpl_ignored:
+                is_ignored = any(map(lambda x: fnmatch.fnmatch(filename, x), cmpl_ignored))
+
+            if is_ignored:
+                continue
+
+            fullname = os.path.join(current_dir, filename)
+
+            minify(fullname)
+
+            compileall.compile_file(fullname, force=True)
+            os.remove(fullname)
+
+
+def get_directory_hash(root_dir):
+
+    sha256_hash = hashlib.sha256()
+
+    if not os.path.isdir(root_dir):
         LOGGER.error("Directory '{}' doesn't"
-                     " exist".format(directory))
+                     " exist".format(root_dir))
         return
 
-    for path in sorted(directory.rglob("*"), key=lambda w: w.as_posix().replace("_", "}")):
+    paths = [os.path.join(dp, f) for dp, dn, fn in os.walk(root_dir) for f in fn if f != ".sha256"]
 
-        if path.name == ".md5":
-            continue
-
-        if path.is_dir():
-            continue
+    for path in sorted(paths, key=lambda k: k.replace("_", "}")):
 
         try:
-            f = path.open("rb", buffering=4096)
+            f = open(path, "rb", buffering=4096)
         except:
             LOGGER.error("Unable to open the file:"
                          " '{}'".format(path))
@@ -56,11 +76,11 @@ def get_directory_md5(directory):
             if not buf:
                 break
 
-            md5_hash.update(hashlib.md5(buf).hexdigest())
+            sha256_hash.update(hashlib.sha256(buf).hexdigest())
 
         f.close()
 
-    return md5_hash.hexdigest()
+    return sha256_hash.hexdigest()
 
 
 def get_toolset_metadata(root_dir):
@@ -69,22 +89,22 @@ def get_toolset_metadata(root_dir):
 
     # find .toolset configuration file with all
     # toolset's parameters
-    toolset_cfg_path = root_dir / "config.yml"
-    if not toolset_cfg_path.is_file():
+    toolset_cfg_path = os.path.join(root_dir, "config.yml")
+    if not os.path.isfile(toolset_cfg_path):
         return
 
-    return yaml.load(toolset_cfg_path.open())
+    with open(toolset_cfg_path, "r") as f:
+        return yaml.load(f)
 
 
-def execute_file(filename, globals=None, locals=None):
-
-    if filename.suffix == ".pyc":
-        with open(str(filename), "rb") as f:
+def execute_file(filepath, globals=None, locals=None):
+    if filepath.endswith(".pyc"):
+        with open(filepath, "rb") as f:
             f.seek(8)
             code = marshal.load(f)
             exec (code, globals, locals)
-    elif filename.suffix == ".py":
-        execfile(str(filename), globals, locals)
+    elif filepath.endswith(".py"):
+        execfile(filepath, globals, locals)
 
 
 def cleanup(directory, name_patterns=None):
@@ -93,16 +113,13 @@ def cleanup(directory, name_patterns=None):
     provided, remove the whole directory and all the files inside.
 
     Args:
-        directory(pathlib2.Path): directory to cleanup.
+        directory(str): directory to cleanup.
 
     Kwargs:
         name_patterns(list-of-str): any directory or the file with the name
             matching one of these patterns will be removed.
 
     """
-
-    if isinstance(directory, pathlib2.Path):
-        directory = str(directory.resolve())
 
     def onerror(func, path, exc_info):
         """
@@ -162,3 +179,7 @@ def cleanup(directory, name_patterns=None):
                     return False
 
     return True
+
+
+def resolve(path):
+    return path.replace('\\', '/').replace('/', os.path.sep)

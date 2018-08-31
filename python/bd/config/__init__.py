@@ -6,7 +6,7 @@ import cPickle
 from .loader import Loader
 from ..exceptions import *
 
-LOGGER = logging.getLogger("bd.config")
+LOGGER = logging.getLogger(__name__)
 
 
 CURRENT_PLATFORM = {
