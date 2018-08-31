@@ -8,7 +8,7 @@ requirements = [
     "pluginbase==0.7",
     "requests==2.19.1",
     "pathlib2==2.3.2",
-    "pyside2==5.11.1"
+    "pyside2"
 ]
 
 if "BD_DEVEL" in os.environ:
@@ -19,11 +19,14 @@ if "BD_DEVEL" in os.environ:
 
 setup(
     name='bd',
-    version="v0.0.8",
+    version="v0.0.9",
     description="The main bd api library",
     long_description='',
     author='Heorhi Samushyia',
     packages=find_packages("python"),
+    setup_requires=[
+        "GitPython==2.1.10"
+    ],
     install_requires=requirements,
     dependency_links=[
         'http://download.qt.io/snapshots/ci/pyside/5.11/latest/'
