@@ -62,7 +62,7 @@ def publish():
                         ignore=lambda src, names: [] if src != repo_path else
                         set(names).difference(accepted))
 
-        utils.compile(tmp_dir)
+        utils.compile(tmp_dir, ["setup.py"])
 
         repo = git.Repo.init(tmp_dir)
 
