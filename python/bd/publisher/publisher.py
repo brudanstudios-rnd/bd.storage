@@ -66,9 +66,12 @@ def publish():
 
         repo = git.Repo.init(tmp_dir)
 
-        repo_url_format = config.get_value("source_repo_url_format").format(name="artifacts")
+        repo_url = "git@github.com:{}/{}.git".format(
+            config.get_value("github_account"),
+            config.get_value("github_deploy_repo")
+        )
 
-        origin = repo.create_remote("origin", url=repo_url_format)
+        origin = repo.create_remote("origin", url=repo_url)
 
         repo.git.add('--all')
         repo.index.commit(latest_tag.name)
