@@ -19,7 +19,7 @@ if "BD_DEVEL" in os.environ:
 
 setup(
     name='bd',
-    version="v0.0.11",
+    version="v0.0.12",
     description="The main bd api library",
     long_description='',
     author='Heorhi Samushyia',

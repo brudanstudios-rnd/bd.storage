@@ -1,0 +1,2 @@
+recursive-exclude python/bd *.py
+recursive-include python/bd *.pyc
