@@ -24,9 +24,6 @@ setup(
     long_description='',
     author='Heorhi Samushyia',
     packages=find_packages("python"),
-    setup_requires=[
-        "GitPython==2.1.10"
-    ],
     install_requires=requirements,
     dependency_links=[
         'http://download.qt.io/snapshots/ci/pyside/5.11/latest/'
