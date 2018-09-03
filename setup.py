@@ -19,14 +19,14 @@ if "BD_DEVEL" in os.environ:
 
 setup(
     name='bd',
-    version="v0.0.9",
+    version="v0.0.11",
     description="The main bd api library",
     long_description='',
     author='Heorhi Samushyia',
     packages=find_packages("python"),
     install_requires=requirements,
     dependency_links=[
-        'http://download.qt.io/snapshots/ci/pyside/5.11/latest/'
+        'http://download.qt.io/snapshots/ci/pyside/5.11/latest/pyside2'
     ],
     zip_safe=False,
     package_dir={"": "python"},
