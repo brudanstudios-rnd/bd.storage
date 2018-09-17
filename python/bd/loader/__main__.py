@@ -6,11 +6,12 @@ from argparse import ArgumentParser
 import logging
 import getpass
 
+from bd.logger import get_logger
 import bd.config as config
 from bd.loader.environment import ENV
 from bd.exceptions import *
 
-LOGGER = logging.getLogger(__name__)
+LOGGER = get_logger()
 
 
 def _add_args_load(subparsers):
@@ -97,8 +98,6 @@ def main():
 
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO)
-
     pipeline_dir = os.getenv("BD_PIPELINE_DIR")
     if not pipeline_dir:
         LOGGER.error("Undefined BD_PIPELINE_DIR environment variable. Please activate the pipeline")
@@ -107,7 +106,7 @@ def main():
     user = os.getenv("BD_USER", getpass.getuser())
     ENV["BD_USER"] = args.user if args.user else user
 
-    if not os.getenv("BD_PRESET_NAME"):
+    if not os.getenv("BD_PRESET"):
         LOGGER.error("Please specify a project preset name.")
         sys.exit(1)
 

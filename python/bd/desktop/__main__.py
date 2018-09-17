@@ -6,26 +6,27 @@ import logging
 import getpass
 from argparse import ArgumentParser
 
-os.environ['QT_API'] = 'pyside2'
+from PySide2 import QtWidgets, QtGui, QtCore, QtNetwork
 
-from qtpy import QtWidgets, QtGui, QtCore, QtNetwork
-
-import bd.config.loader
+import bd.config
 from bd.exceptions import *
 
-LOGGER = logging.getLogger("bd.desktop")
+LOGGER = logging.getLogger("desktop")
+
+join = os.path.join
+exists = os.path.exists
 
 
 BD_DEVEL = "BD_DEVEL" in os.environ
 
-BD_PIPELINE_DIR = os.getenv("BD_PIPELINE_DIR", "/Volumes/asset/pipeline")
+BD_PIPELINE_DIR = os.getenv("BD_PIPELINE_DIR")
 
-BD_RESOURCES_DIR = os.path.join(BD_PIPELINE_DIR, "resources")
+BD_RESOURCES_DIR = os.getenv("BD_RESOURCES_DIR")
 
-APP_ICON = os.path.join(BD_RESOURCES_DIR, "icons", "logo_bd.ico")
-PRESET_ICON = os.path.join(BD_RESOURCES_DIR, "icons", "preset.png")
-PROJECT_ICON = os.path.join(BD_RESOURCES_DIR, "icons", "project.png")
-LAUNCHER_ICON = os.path.join(BD_RESOURCES_DIR, "icons", "launcher.png")
+APP_ICON = join(BD_RESOURCES_DIR, "icons", "logo_bd.ico")
+PRESET_ICON = join(BD_RESOURCES_DIR, "icons", "preset.png")
+PROJECT_ICON = join(BD_RESOURCES_DIR, "icons", "project.png")
+LAUNCHER_ICON = join(BD_RESOURCES_DIR, "icons", "launcher.png")
 
 
 def px(value):
@@ -49,6 +50,7 @@ class Messenger(QtCore.QObject):
     launcher_selected = QtCore.Signal(dict)
 
     settings_menu_activated = QtCore.Signal()
+    show_logger = QtCore.Signal()
 
     def __init__(self):
         super(Messenger, self).__init__()
@@ -420,7 +422,7 @@ class NavigationBar(QtWidgets.QWidget):
         self.setFixedHeight(px(25))
         self._back_button = QtWidgets.QToolButton(self)
         self._back_button.setIcon(
-            QtGui.QIcon(os.path.join(BD_RESOURCES_DIR, "icons", "toolbutton_back.png"))
+            QtGui.QIcon(join(BD_RESOURCES_DIR, "icons", "toolbutton_back.png"))
         )
         self._back_button.setIconSize(QtCore.QSize(px(5), px(5)))
         self._back_button.setFocusPolicy(QtCore.Qt.NoFocus)
@@ -517,7 +519,7 @@ class StatusBar(QtWidgets.QWidget):
         self.setFixedHeight(px(25))
         self._menu_button = QtWidgets.QToolButton(self)
         self._menu_button.setIcon(
-            QtGui.QIcon(os.path.join(BD_RESOURCES_DIR, "icons", "toolbutton_settingsMenu.png"))
+            QtGui.QIcon(join(BD_RESOURCES_DIR, "icons", "toolbutton_settingsMenu.png"))
         )
         self._menu_button.setFocusPolicy(QtCore.Qt.NoFocus)
         self._menu_button.setFixedSize(self.height(), self.height())
@@ -622,6 +624,7 @@ class MainWindow(QtWidgets.QWidget):
         self._statusbar = StatusBar(self)
 
         self._settings_menu = QtWidgets.QMenu(self)
+        self._settings_menu.addAction("Logger", messenger.show_logger.emit)
         self._settings_menu.addAction("Exit", on_exit_clicked)
         self._settings_menu.setMinimumWidth(px(100))
 
@@ -717,6 +720,88 @@ class SystemTrayIcon(QtWidgets.QSystemTrayIcon):
         self._widget.raise_()
 
 
+class SingleLevelFilter(logging.Filter):
+    def __init__(self, level, reject):
+        self._level = level
+        self._reject = reject
+
+    def filter(self, record):
+        if self._reject:
+            return record.levelno != self._level
+        else:
+            return record.levelno == self._level
+
+
+class OutputLogWindow(QtWidgets.QDialog):
+
+    cached_geo = None
+
+    default_color = QtGui.QColor("#FFFAFA")
+
+    def __init__(self, parent=None):
+        super(OutputLogWindow, self).__init__(parent)
+        self._init_ui()
+        self._init_layout()
+        self._init_signals()
+
+    def _init_ui(self):
+        self.setWindowTitle("Logger Console")
+        self.setWindowFlags(self.windowFlags() & QtCore.Qt.Popup)
+        self._edit = QtWidgets.QTextEdit(self)
+        self._edit.setReadOnly(True)
+
+    def _init_layout(self):
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setMargin(2)
+
+        layout.addWidget(self._edit)
+
+    def _init_signals(self):
+        messenger.show_logger.connect(self._on_show_logger)
+
+    def _on_show_logger(self):
+        if self.isHidden():
+            if self.cached_geo:
+                self.setGeometry(self.cached_geo)
+            self.showNormal()
+
+        self.activateWindow()
+        self.raise_()
+
+    def write(self, message, color=None):
+        self._edit.moveCursor(QtGui.QTextCursor.End)
+
+        self._edit.setTextColor(color if color else self.default_color)
+
+        self._edit.insertPlainText(message)
+
+        self._edit.setTextColor(self.default_color)
+
+    def closeEvent(self, event):
+        self.cached_geo = self.geometry()
+        event.ignore()
+        self.hide()
+
+
+class OutputLogger(object):
+    """Writes stdout, stderr to a QTextEdit."""
+
+    def __init__(self, edit, color=None):
+        """Constructor.
+
+        Args:
+            edit(QWidget): any widget implementing 'write' method.
+
+        Kwargs:
+            color(QColor): alternative text color.
+        """
+        self._edit = edit
+        self._color = color
+
+    def write(self, message):
+        self._edit.write(message, self._color)
+
+
 @QtCore.Slot()
 def on_exit_clicked():
     button = QtWidgets.QMessageBox.question(None,
@@ -731,48 +816,43 @@ def on_exit_clicked():
 def get_project_infos():
     import yaml
 
-    preset_root_dir = os.path.join(BD_PIPELINE_DIR, "presets")
+    preset_root_dir = os.environ["BD_PRESETS_DIR"]
 
     project_infos = []
     project_infos_map = {}
 
     for preset_name in os.listdir(preset_root_dir):
 
-        preset_dir = os.path.join(preset_root_dir, preset_name)
+        preset_dir = join(preset_root_dir, preset_name)
 
-        config = os.path.join(preset_dir, "config", "preset.yml")
-        if not os.path.exists(config):
+        config = join(preset_dir, "projects.yml")
+        if not exists(config):
             continue
 
         with open(config, "r") as f:
             data = yaml.load(f)
-            proj_name = data.get("project")
+            project_names = data.get("projects")
 
-        project_info = project_infos_map.get(proj_name)
+        for project_name in project_names:
+            project_info = project_infos_map.get(project_name)
 
-        if not project_info:
-            project_info = {
-                "name": proj_name,
-                "presets": [preset_name]
-            }
-            project_infos_map[proj_name] = project_info
-            project_infos.append(project_info)
-            continue
+            if not project_info:
+                project_info = {
+                    "name": project_name,
+                    "presets": [preset_name]
+                }
+                project_infos_map[project_name] = project_info
+                project_infos.append(project_info)
+                continue
 
-        project_info["presets"].append(preset_name)
+            project_info["presets"].append(preset_name)
 
     return project_infos
 
 
 def get_launcher_infos(preset_name):
 
-    os.environ["BD_PRESET_NAME"] = preset_name
-    os.environ["BD_OS"] = bd.config.CURRENT_PLATFORM
-
-    config = bd.config.loader.Loader.load()
-
-    del os.environ["BD_PRESET_NAME"]
-    del os.environ["BD_OS"]
+    config = bd.config.load(cached=False, preset=preset_name)
 
     launcher_infos = []
 
@@ -780,34 +860,41 @@ def get_launcher_infos(preset_name):
 
         launcher_info = {"launcher_name": launcher_name, "versions": [], "active_version": None}
 
-        icon_filename = os.path.join(
+        icon_filename = join(
             config.get("proj_preset_dir"),
             "resources",
             "icons",
             "launcher_{name}.png".format(name=launcher_name)
         )
 
-        if not os.path.exists(icon_filename):
-            icon_filename = os.path.join(
+        if not exists(icon_filename):
+            icon_filename = join(
                 BD_PIPELINE_DIR,
                 "resources",
                 "icons",
                 "launcher_{name}.png".format(name=launcher_name)
             )
-            if not os.path.exists(icon_filename):
+            if not exists(icon_filename):
                 icon_filename = LAUNCHER_ICON
 
         launcher_info["icon_filename"] = icon_filename
 
-        for version in launcher_data.iterkeys():
+        for version, paths in launcher_data.iteritems():
 
             if version == "default":
                 continue
 
+            if not paths.get(bd.config.CURRENT_PLATFORM):
+                continue
+
             launcher_info["versions"].append(version)
+
+        if not launcher_info["versions"]:
+            continue
 
         active_version = launcher_data.get("default", launcher_info["versions"][-1])
         launcher_info["active_version"] = active_version
+
         launcher_infos.append(launcher_info)
 
     return launcher_infos
@@ -815,6 +902,7 @@ def get_launcher_infos(preset_name):
 
 @QtCore.Slot(dict)
 def on_project_selected(project_info):
+    os.environ["BD_PROJECT"] = project_info["name"]
     messenger.preset_infos_ready.emit([{"name": preset} for preset in project_info["presets"]])
 
 
@@ -828,25 +916,36 @@ def on_preset_selected(preset_info):
 def on_launcher_selected(launcher_info):
     process = QtCore.QProcess()
 
-    process.setProcessChannelMode(QtCore.QProcess.MergedChannels)
     process.readyReadStandardOutput.connect(lambda: on_process_output(process))
+    process.readyReadStandardError.connect(lambda: on_process_error(process))
 
     command = \
-        ("{pipeline_dir}/bin/activate bd -p {preset}"
-         " launch {launcher_name} -v {launcher_version}").format(
-             pipeline_dir=str(BD_PIPELINE_DIR),
+        ("{activate_exec} bd {devel} --blocking -p {preset}"
+         " launch --devel {launcher_name} -v {launcher_version}").format(
+             activate_exec=join(
+                 BD_PIPELINE_DIR,
+                 "bin",
+                 "activate" + (".bat" if sys.platform == "win32" else "")
+             ),
+             devel="--devel" if BD_DEVEL else "",
              preset=str(messenger.get_preset()),
              launcher_name=str(launcher_info["launcher_name"]),
              launcher_version=str(launcher_info["active_version"])
         )
-    LOGGER.info("Executing command: {}".format(command))
+
+    LOGGER.info("Executing: {}".format(command))
 
     process.start(command)
 
 
 @QtCore.Slot(QtCore.QProcess)
 def on_process_output(process):
-    print process.readAll(),
+    sys.stdout.write(str(process.readAllStandardOutput()))
+
+
+@QtCore.Slot(QtCore.QProcess)
+def on_process_error(process):
+    sys.stderr.write(str(process.readAllStandardError()))
 
 
 #
@@ -932,8 +1031,6 @@ if __name__ == '__main__':
     import qdarkstyle
     import warnings
 
-    logging.basicConfig(level=logging.INFO)
-
     parser = ArgumentParser(prog="bd-desktop")
 
     _add_args(parser)
@@ -982,6 +1079,20 @@ if __name__ == '__main__':
 
     main_window.show()
 
+    log_window = OutputLogWindow(main_window)
+
+    sys.stdout = OutputLogger(log_window, QtGui.QColor("#c8c8c8"))
+    sys.stderr = OutputLogger(log_window, QtGui.QColor("#c04545"))
+
+    screen_geo = app.desktop().availableGeometry(app.desktop().primaryScreen())
+    screen_geo.setTop(screen_geo.bottom() - px(300))
+    screen_geo.setRight(main_window.geometry().left())
+    screen_geo.setLeft(screen_geo.right() - px(600))
+
+    log_window.setGeometry(screen_geo)
+
+    log_window.show()
+
     tray_icon = SystemTrayIcon(main_window)
     tray_icon.show()
 
@@ -989,5 +1100,22 @@ if __name__ == '__main__':
     messenger.project_infos_ready.emit(project_infos)
 
     app.activated.connect(tray_icon.on_singleton_activated)
+
+    formatter = logging.Formatter(
+        '[ %(levelname)-10s ] %(asctime)s - %(message)s',
+        datefmt='%d-%m %H:%M'
+    )
+
+    stdout_handler = logging.StreamHandler(sys.stdout)
+    stdout_handler.addFilter(SingleLevelFilter(logging.INFO, False))
+    stdout_handler.setFormatter(formatter)
+    LOGGER.addHandler(stdout_handler)
+
+    stderr_handler = logging.StreamHandler(sys.stderr)
+    stderr_handler.addFilter(SingleLevelFilter(logging.INFO, True))
+    stderr_handler.setFormatter(formatter)
+    LOGGER.addHandler(stderr_handler)
+
+    LOGGER.setLevel(logging.INFO)
 
     sys.exit(app.exec_())

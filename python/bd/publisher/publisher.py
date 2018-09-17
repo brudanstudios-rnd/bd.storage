@@ -1,15 +1,14 @@
 import os
-import sys
 import git
-import logging
 import tempfile
 
 import shutil
 
+from ..logger import get_logger
 from .. import utils
 from .. import config
 
-LOGGER = logging.getLogger(__name__)
+LOGGER = get_logger()
 
 
 def publish():

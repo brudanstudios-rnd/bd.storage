@@ -4,6 +4,7 @@ __all__ = ["load_toolsets", "list_toolsets", "get_available_toolsets"]
 import os
 import logging
 
+from ..logger import get_logger
 from .. import config
 from .. import hooks
 from .. import installer
@@ -11,7 +12,7 @@ from .environment import ENV
 from .. import utils
 
 
-LOGGER = logging.getLogger(__name__)
+LOGGER = get_logger()
 
 
 def _execute_bd_init(directory):
@@ -188,8 +189,7 @@ def load_toolsets(
         True on success, False otherwise.
 
     """
-    LOGGER.info("app_name: {0} | app_version: {1}".format(app_name,
-                                                          app_version))
+    LOGGER.info("Loading toolsets for {}-{}".format(app_name, app_version))
 
     proj_preset_dir = utils.resolve(config.get_value("proj_preset_dir"))
 
@@ -210,17 +210,15 @@ def load_toolsets(
     if not toolsets_to_load:
         return False
 
-    LOGGER.info("Loading toolsets:")
-
     ENV.putenv("BD_HOOKPATH", os.path.join(proj_preset_dir, "hooks"))
 
     all_toolset_names = frozenset([name for name, _, _ in toolsets_to_load])
 
     for toolset_name, toolset_version, toolset_dir in toolsets_to_load:
 
-        LOGGER.info('{:20} | {:10} | {}'.format(toolset_name,
-                                                toolset_version,
-                                                toolset_dir))
+        LOGGER.info('{} - {} - {}'.format(toolset_name,
+                                          toolset_version,
+                                          toolset_dir))
 
         missing_toolsets = _check_dependencies(toolset_name, toolset_dir, all_toolset_names)
 
@@ -263,4 +261,6 @@ def list_toolsets(devel=False):
 
     for toolset_name, toolset_version, toolset_dir in toolsets_to_load:
 
-        print '{:20} | {:10} | {}'.format(toolset_name, toolset_version, toolset_dir)
+        LOGGER.info('{} - {} - {}'.format(toolset_name,
+                                          toolset_version,
+                                          toolset_dir))

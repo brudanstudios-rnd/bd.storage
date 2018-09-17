@@ -3,10 +3,11 @@ import logging
 import platform
 import cPickle
 
+from ..logger import get_logger
 from .loader import Loader
 from ..exceptions import *
 
-LOGGER = logging.getLogger(__name__)
+LOGGER = get_logger()
 
 
 CURRENT_PLATFORM = {
@@ -15,41 +16,39 @@ CURRENT_PLATFORM = {
     "Darwin": "mac"
 }.get(platform.system())
 
+os.environ["BD_OS"] = CURRENT_PLATFORM
 
 _config = None
 
 
-def load():
+def load(cached=True, preset=None):
+
+    if not cached:
+        return Loader.load(preset)
 
     global _config
 
-    if _config is not None:
-        return _config
+    if _config is None:
 
-    if "BD_OS" not in os.environ:
-        os.environ["BD_OS"] = CURRENT_PLATFORM
+        base64_config = os.getenv("BD_CONFIG_DATA")
 
-    base64_config = os.getenv("BD_CONFIG_DATA")
+        if base64_config:
+            try:
+                _config = cPickle.loads(base64_config.decode("base64", "strict"))
+            except Exception:
+                raise ConfigDeserializationError(details={"var_name": "BD_CONFIG_DATA"})
+        else:
+            _config = Loader.load()
 
-    if base64_config:
-        try:
-            _config = cPickle.loads(base64_config.decode("base64", "strict"))
-        except Exception:
-            raise ConfigDeserializationError(details={"var_name": "BD_CONFIG_DATA"})
-    else:
-        _config = Loader.load()
-
-        os.environ["BD_CONFIG_DATA"] = cPickle.dumps(_config, 2).encode("base64", "strict")
-
-    if "BD_PROJECT" not in os.environ and "project" in _config:
-        os.environ["BD_PROJECT"] = _config["project"]
+            os.environ["BD_CONFIG_DATA"] = cPickle.dumps(_config, 2).encode("base64", "strict")
 
     return _config
 
 
-def get_value(key, default=None):
+def get_value(key, default=None, config=None, cached=True, preset=None):
 
-    config = load()
+    if not config:
+        config = load(cached, preset)
 
     keys = key.strip().split("/")
 

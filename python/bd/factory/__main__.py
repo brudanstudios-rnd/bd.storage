@@ -14,9 +14,10 @@ except Exception as e:
 
 import bd.config as config
 import bd.factory as factory
+from bd.logger import get_logger
 from bd.exceptions import *
 
-LOGGER = logging.getLogger(__name__)
+LOGGER = get_logger()
 
 
 def _add_args(parser):

@@ -6,10 +6,11 @@ from argparse import ArgumentParser
 import logging
 import getpass
 
+from bd.logger import get_logger
 import bd.config as config
 from bd.exceptions import *
 
-LOGGER = logging.getLogger(__name__)
+LOGGER = get_logger()
 
 try:
     import git

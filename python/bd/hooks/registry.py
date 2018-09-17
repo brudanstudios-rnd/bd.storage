@@ -2,11 +2,11 @@ __all__ = ["HookRegistry"]
 
 import weakref
 import types
-import logging
 
+from ..logger import get_logger
 from ..exceptions import InvalidCallbackError, HookNotFoundError, HookCallbackDeadError
 
-LOGGER = logging.getLogger(__name__)
+LOGGER = get_logger()
 
 
 class HookRegistry(object):

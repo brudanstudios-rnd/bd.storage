@@ -1,7 +1,7 @@
 import os
-import logging
+from bd.logger import get_logger
 
-LOGGER = logging.getLogger(__name__)
+LOGGER = get_logger()
 
 
 class Environment(object):

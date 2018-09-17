@@ -1,10 +1,10 @@
 import os
-import logging
 
+from bd.logger import get_logger
 import bd.config as config
 import bd.loader as loader
 
-LOGGER = logging.getLogger(__name__)
+LOGGER = get_logger()
 
 
 def launch(app_name,
@@ -28,6 +28,7 @@ def launch(app_name,
         return 1
 
     command = ' '.join([command] + unknown_args)
+
     LOGGER.debug("Running '{}'".format(command))
 
-    return os.system(command)
+    os.system(command)

@@ -5,11 +5,15 @@ import logging
 
 import git
 
+from ..logger import get_logger
 from .. import config
 from .. exceptions import *
 from .. import utils
 
-LOGGER = logging.getLogger(__name__)
+LOGGER = get_logger()
+
+join = os.path.join
+exists = os.path.exists
 
 
 def _init_repository(toolset_dir, github_account):
@@ -74,16 +78,16 @@ def _init_all(toolset_dir):
 def create(name):
 
     development_dir = utils.resolve(config.get_value("development_dir"))
-    if not os.path.exists(development_dir):
+    if not exists(development_dir):
         raise FilesystemPathNotFoundError(details={"path": development_dir})
 
-    toolset_dir = os.path.join(development_dir, name)
-    if os.path.exists(toolset_dir):
+    toolset_dir = join(development_dir, name)
+    if exists(toolset_dir):
         raise OverwriteNotPermittedError(details={"path": toolset_dir})
 
     try:
         _init_all(toolset_dir)
     except Error:
-        if os.path.exists(toolset_dir):
+        if exists(toolset_dir):
             utils.cleanup(toolset_dir)
         raise

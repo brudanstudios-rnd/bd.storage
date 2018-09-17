@@ -4,7 +4,10 @@ import os
 
 from pluginbase import PluginBase
 
+from ..logger import get_logger
 from ..exceptions import *
+
+LOGGER = get_logger()
 
 
 def get_searchpath(path):

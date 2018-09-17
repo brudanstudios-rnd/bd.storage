@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 import os
 import re
-import sys
 from argparse import ArgumentParser
 import logging
 import getpass
 
-LOGGER = logging.getLogger(__name__)
+from bd.logger import get_logger
+
+LOGGER = get_logger()
 
 import bd.config as config
 import bd.installer as installer

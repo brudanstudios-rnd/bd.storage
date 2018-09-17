@@ -1,15 +1,15 @@
 import os
 import re
-import logging
 import getpass
 from argparse import ArgumentParser
 
+from bd.logger import get_logger
 import bd.config as config
 import bd.launcher as launcher
 
 from bd.exceptions import *
 
-LOGGER = logging.getLogger(__name__)
+LOGGER = get_logger()
 
 
 def _add_args(parser):
@@ -33,12 +33,10 @@ def main():
 
     args, unknown_args = parser.parse_known_args()
 
-    logging.basicConfig(level=logging.INFO)
-
     user = os.getenv("BD_USER", getpass.getuser())
     os.environ["BD_USER"] = args.user if args.user else user
 
-    if not os.getenv("BD_PRESET_NAME"):
+    if not os.getenv("BD_PRESET"):
         LOGGER.error("Please specify a project preset name.")
         sys.exit(1)
 

@@ -1,7 +1,6 @@
 __all__ = ["Loader"]
 
 import os
-import logging
 
 import metayaml
 
@@ -22,31 +21,36 @@ def construct_mapping(self, node, deep=False):
 myml.OrderedDictYAMLLoader.construct_mapping_org = myml.OrderedDictYAMLLoader.construct_mapping
 myml.OrderedDictYAMLLoader.construct_mapping = construct_mapping
 
-
+from ..logger import get_logger
 from ..exceptions import *
+from .. import utils
 
+join = os.path.join
+exists = os.path.exists
 
-LOGGER = logging.getLogger(__name__)
+LOGGER = get_logger()
 
 
 class Loader(object):
 
     @classmethod
-    def load(cls, preset_name=None):
+    def load(cls, preset=None):
         if "BD_PIPELINE_DIR" not in os.environ:
             raise PipelineNotActivatedError()
 
-        # main config file
-        core_config_path = os.path.join(os.environ["BD_PIPELINE_DIR"], "core.yml")
+        pipeline_dir = utils.resolve(os.environ["BD_PIPELINE_DIR"])
+        os.environ["BD_PIPELINE_DIR"] = pipeline_dir
+
+        core_config_path = utils.resolve(os.getenv("BD_CORE_CONFIG_PATH"))
+        if not core_config_path:
+            # main config file
+            core_config_path = join(pipeline_dir, "core.yml")
 
         if not os.path.exists(core_config_path):
             raise FilesystemPathNotFoundError(details={"path": core_config_path})
 
-        environ = os.environ.copy()
-        environ["BD_PIPELINE_DIR"] = environ["BD_PIPELINE_DIR"].replace('\\', '/')
-
         # used to access environment variables inside yaml config files
-        defaults = {"env": environ.get}
+        defaults = {"env": os.environ.get}
 
         try:
             # read main config file
@@ -58,13 +62,10 @@ class Loader(object):
         except Exception as e:
             raise FailedConfigParsingError(details={"exc_msg": str(e)})
 
+        config["pipeline_dir"] = pipeline_dir
+
         # check if all the mandatory keys exist
-        for key in ("pipeline_dir",
-                    "presets_dir",
-                    "development_dir",
-                    "proj_preset_dir",
-                    "user_overrides_dir",
-                    "github_account",
+        for key in ("github_account",
                     "github_deploy_repo",
                     "is_centralized"):
 
@@ -75,38 +76,37 @@ class Loader(object):
             if val is None:
                 raise ConfigValueTypeError(details={"key": key, "type": type(val)})
 
-        if not preset_name:
-            preset_name = os.getenv("BD_PRESET_NAME")
+        config["development_dir"] = utils.resolve(os.environ["BD_DEVEL_DIR"])
+        config["presets_dir"] = utils.resolve(os.environ["BD_PRESETS_DIR"])
+        config["toolbox_dir"] = utils.resolve(os.environ["BD_TOOLBOX_DIR"])
 
-        # BD_PRESET_NAME could be undefined if there was no --config-name option specified
+        if not preset:
+            preset = os.getenv("BD_PRESET")
+
+        # BD_PRESET could be undefined if there was no --config-name option specified
         # in the command line
-        if preset_name:
-            proj_preset_dir = config["proj_preset_dir"]
+        if preset:
+
+            proj_preset_dir = join(config["presets_dir"], preset)
+
             if not os.path.exists(proj_preset_dir):
-                raise ProjectPresetNotFoundError(details={"preset_name": preset_name})
+                raise ProjectPresetNotFoundError(details={"preset_name": preset})
 
-            config_dir = os.path.join(proj_preset_dir, "config")
-            if not os.path.exists(config_dir):
-                raise FilesystemPathNotFoundError(details={"path": config_dir})
+            config["proj_preset_dir"] = proj_preset_dir
 
-            config_search_dirs = [config_dir]
+            config_file = join(proj_preset_dir, 'config.yml')
+            if not os.path.exists(config_file):
+                raise FilesystemPathNotFoundError(details={"path": config_file})
 
-            user_overrides_dir = os.path.join(config["user_overrides_dir"], "config")
+            config_files = [config_file]
 
-            if os.path.exists(user_overrides_dir):
-                config_search_dirs.append(user_overrides_dir)
+            config_file = join(proj_preset_dir, "overrides", os.environ["BD_USER"], "config.yml")
 
-            # recursively collect all the config file paths
-            config_files = []
-            for config_search_dir in config_search_dirs:
-                for root_dir, _, filenames in os.walk(config_search_dir):
-                    for filename in filenames:
-                        if not filename.endswith(".yml"):
-                            continue
-                        config_files.append(os.path.join(root_dir, filename))
+            if os.path.exists(config_file):
+                config_files.append(config_file)
 
             if not config_files:
-                raise ProjectConfigurationFilesNotFound(details={"preset_name": preset_name})
+                raise ProjectConfigurationFilesNotFound(details={"preset_name": preset})
 
             try:
                 # read config data
@@ -120,14 +120,9 @@ class Loader(object):
             except Exception as e:
                 raise FailedConfigParsingError(details={"exc_msg": str(e)})
 
-            if "project" not in config:
-                raise MandatoryKeyNotFoundError(details={"key": "project"})
-        else:
-            config.pop("proj_preset_dir", None)
-            config.pop("user_overrides_dir", None)
-
-        if "BD_DEVEL_DIR" in os.environ:
-            config["development_dir"] = os.getenv("BD_DEVEL_DIR").replace("\\", "/")
+            project_name = os.getenv("BD_PROJECT")
+            if project_name:
+                config["project"] = project_name
 
         config.pop("env", None)
 

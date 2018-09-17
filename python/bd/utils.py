@@ -1,12 +1,13 @@
 import os
-import logging
 import shutil
 import fnmatch
 import hashlib
 import marshal
 import compileall
 
-LOGGER = logging.getLogger(__name__)
+from .logger import get_logger
+
+LOGGER = get_logger()
 
 
 def minify(input_file):
@@ -182,4 +183,7 @@ def cleanup(directory, name_patterns=None):
 
 
 def resolve(path):
+    if not path:
+        return path
+
     return path.replace('\\', '/').replace('/', os.path.sep)

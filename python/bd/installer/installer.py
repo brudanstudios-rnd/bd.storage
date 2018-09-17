@@ -9,10 +9,14 @@ import itertools
 
 import requests
 
+from ..logger import get_logger
 from .. import config
 from .. import utils
 
-LOGGER = logging.getLogger(__name__)
+join = os.path.join
+exists = os.path.exists
+
+LOGGER = get_logger()
 
 
 def install(name, version):
@@ -34,11 +38,11 @@ def install(name, version):
     """
     LOGGER.info("Installing version '{}' of toolset '{}'".format(version, name))
 
-    root_dir = utils.resolve(config.get_value("pipeline_dir"))
+    toolbox_dir = utils.resolve(config.get_value("toolbox_dir"))
 
-    toolset_dir = os.path.join(root_dir, "toolbox", name)
+    toolset_dir = join(toolbox_dir, name)
 
-    if not os.path.exists(toolset_dir):
+    if not exists(toolset_dir):
         try:
             LOGGER.info("Creating '{}' directory ...".format(toolset_dir))
 
@@ -49,7 +53,7 @@ def install(name, version):
             LOGGER.error("Unable to create directory: '{}' \n{}".format(toolset_dir, e))
             return
 
-    if os.path.exists(os.path.join(toolset_dir, version)):
+    if exists(join(toolset_dir, version)):
         LOGGER.info("Version '{}' of '{}' toolset is already installed".format(version, name))
         return
 
@@ -93,13 +97,13 @@ def install(name, version):
         os.remove(tmp_path)
         raise
 
-    version_dir = os.path.join(toolset_dir, version)
+    version_dir = join(toolset_dir, version)
 
     try:
         LOGGER.info("Calculating checksum ...")
 
         checksum = utils.get_directory_hash(version_dir)
-        with open(os.path.join(version_dir, ".sha256"), "w") as f:
+        with open(join(version_dir, ".sha256"), "w") as f:
             f.write(unicode(checksum))
 
         LOGGER.info("done.")

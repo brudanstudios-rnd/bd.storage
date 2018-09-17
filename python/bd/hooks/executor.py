@@ -1,7 +1,7 @@
-import logging
+from ..logger import get_logger
 from ..exceptions import CallbackExecutionError
 
-LOGGER = logging.getLogger(__name__)
+LOGGER = get_logger()
 
 
 class HookExecutor(object):
