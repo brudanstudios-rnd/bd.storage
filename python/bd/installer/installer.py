@@ -16,7 +16,7 @@ from .. import utils
 join = os.path.join
 exists = os.path.exists
 
-LOGGER = get_logger()
+LOGGER = get_logger(__name__)
 
 
 def install(name, version):

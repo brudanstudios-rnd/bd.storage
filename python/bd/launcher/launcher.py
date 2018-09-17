@@ -4,7 +4,7 @@ from bd.logger import get_logger
 import bd.config as config
 import bd.loader as loader
 
-LOGGER = get_logger()
+LOGGER = get_logger(__name__)
 
 
 def launch(app_name,

@@ -11,7 +11,7 @@ import bd.config as config
 from bd.loader.environment import ENV
 from bd.exceptions import *
 
-LOGGER = get_logger()
+LOGGER = get_logger(__name__)
 
 
 def _add_args_load(subparsers):

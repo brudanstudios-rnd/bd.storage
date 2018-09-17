@@ -6,7 +6,7 @@ import types
 from ..logger import get_logger
 from ..exceptions import InvalidCallbackError, HookNotFoundError, HookCallbackDeadError
 
-LOGGER = get_logger()
+LOGGER = get_logger(__name__)
 
 
 class HookRegistry(object):

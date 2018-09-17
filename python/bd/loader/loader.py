@@ -12,7 +12,7 @@ from .environment import ENV
 from .. import utils
 
 
-LOGGER = get_logger()
+LOGGER = get_logger(__name__)
 
 
 def _execute_bd_init(directory):

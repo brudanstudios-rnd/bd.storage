@@ -10,7 +10,7 @@ from .. import config
 from .. exceptions import *
 from .. import utils
 
-LOGGER = get_logger()
+LOGGER = get_logger(__name__)
 
 join = os.path.join
 exists = os.path.exists

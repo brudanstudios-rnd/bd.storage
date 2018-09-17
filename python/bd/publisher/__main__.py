@@ -10,7 +10,7 @@ from bd.logger import get_logger
 import bd.config as config
 from bd.exceptions import *
 
-LOGGER = get_logger()
+LOGGER = get_logger(__name__)
 
 try:
     import git

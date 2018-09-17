@@ -7,7 +7,7 @@ from ..logger import get_logger
 from .loader import Loader
 from ..exceptions import *
 
-LOGGER = get_logger()
+LOGGER = get_logger(__name__)
 
 
 CURRENT_PLATFORM = {

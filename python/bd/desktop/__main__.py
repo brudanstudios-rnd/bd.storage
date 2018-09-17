@@ -1102,7 +1102,7 @@ if __name__ == '__main__':
     app.activated.connect(tray_icon.on_singleton_activated)
 
     formatter = logging.Formatter(
-        '[ %(levelname)-10s ] %(asctime)s - %(message)s',
+        '[ %(levelname)-8s ] %(asctime)s - %(message)s',
         datefmt='%d-%m %H:%M'
     )
 

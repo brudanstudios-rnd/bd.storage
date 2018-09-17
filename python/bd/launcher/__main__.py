@@ -9,7 +9,7 @@ import bd.launcher as launcher
 
 from bd.exceptions import *
 
-LOGGER = get_logger()
+LOGGER = get_logger(__name__)
 
 
 def _add_args(parser):

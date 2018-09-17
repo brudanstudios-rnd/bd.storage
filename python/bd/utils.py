@@ -7,7 +7,7 @@ import compileall
 
 from .logger import get_logger
 
-LOGGER = get_logger()
+LOGGER = get_logger(__name__)
 
 
 def minify(input_file):

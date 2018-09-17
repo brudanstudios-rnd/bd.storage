@@ -17,7 +17,7 @@ import bd.factory as factory
 from bd.logger import get_logger
 from bd.exceptions import *
 
-LOGGER = get_logger()
+LOGGER = get_logger(__name__)
 
 
 def _add_args(parser):

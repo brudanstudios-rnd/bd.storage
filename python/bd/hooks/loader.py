@@ -7,7 +7,7 @@ from pluginbase import PluginBase
 from ..logger import get_logger
 from ..exceptions import *
 
-LOGGER = get_logger()
+LOGGER = get_logger(__name__)
 
 
 def get_searchpath(path):

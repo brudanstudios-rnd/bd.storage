@@ -8,7 +8,7 @@ from ..logger import get_logger
 from .. import utils
 from .. import config
 
-LOGGER = get_logger()
+LOGGER = get_logger(__name__)
 
 
 def publish():

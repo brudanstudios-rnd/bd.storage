@@ -1,7 +1,6 @@
 import os
 import sys
 import logging
-import inspect
 
 LOGGER = logging.getLogger("bd")
 
@@ -37,11 +36,7 @@ stderr_handler.setFormatter(formatter)
 LOGGER.setLevel(logging.INFO)
 
 
-def get_logger(name=None):
-    if not name:
-        source = inspect.stack()[1]
-        mod = inspect.getmodule(source[0])
-        name = mod.__name__
+def get_logger(name):
 
     if not name.startswith("bd."):
         name = "bd." + name

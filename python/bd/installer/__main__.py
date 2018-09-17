@@ -7,7 +7,7 @@ import getpass
 
 from bd.logger import get_logger
 
-LOGGER = get_logger()
+LOGGER = get_logger(__name__)
 
 import bd.config as config
 import bd.installer as installer
