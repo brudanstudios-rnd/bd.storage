@@ -1,7 +1,6 @@
 import os
 import shutil
 import fnmatch
-import hashlib
 import marshal
 import compileall
 
@@ -48,40 +47,6 @@ def compile(root_dir, cmpl_ignored=[]):
 
             compileall.compile_file(fullname, force=True)
             os.remove(fullname)
-
-
-def get_directory_hash(root_dir):
-
-    sha256_hash = hashlib.sha256()
-
-    if not os.path.isdir(root_dir):
-        LOGGER.error("Directory '{}' doesn't"
-                     " exist".format(root_dir))
-        return
-
-    paths = [os.path.join(dp, f) for dp, dn, fn in os.walk(root_dir) for f in fn if f != ".sha256"]
-
-    for path in sorted(paths, key=lambda k: k.replace("_", "}")):
-
-        try:
-            f = open(path, "rb", buffering=4096)
-        except:
-            LOGGER.error("Unable to open the file:"
-                         " '{}'".format(path))
-            f.close()
-            return
-
-        while 1:
-
-            buf = f.read()
-            if not buf:
-                break
-
-            sha256_hash.update(hashlib.sha256(buf).hexdigest())
-
-        f.close()
-
-    return sha256_hash.hexdigest()
 
 
 def get_toolset_metadata(root_dir):

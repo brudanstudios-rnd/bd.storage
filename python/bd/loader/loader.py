@@ -2,7 +2,8 @@
 __all__ = ["load_toolsets", "list_toolsets", "get_available_toolsets"]
 
 import os
-import logging
+
+from bd_hasher import get_directory_hash
 
 from ..logger import get_logger
 from .. import config
@@ -161,7 +162,7 @@ def get_available_toolsets(devel=False):
             with open(revision_sha256_path, "r") as f:
                 revision_sha256 = f.read()
 
-            if revision_sha256 != utils.get_directory_hash(toolset_dir):
+            if revision_sha256 != get_directory_hash(toolset_dir):
                 LOGGER.error("Unable to load revision '{}' "
                              "of '{}' toolset. Checksum mismatch. Please make sure the "
                              "toolset is installed correctly.".format(toolset_version, toolset_name))
