@@ -29,6 +29,6 @@ def launch(app_name,
 
     command = ' '.join([command] + unknown_args)
 
-    LOGGER.debug("Running '{}'".format(command))
+    LOGGER.info("Running '{}'".format(command))
 
     os.system(command)

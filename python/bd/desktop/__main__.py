@@ -4,7 +4,6 @@ import sys
 import re
 import logging
 import getpass
-from argparse import ArgumentParser
 
 from PySide2 import QtWidgets, QtGui, QtCore, QtNetwork
 
@@ -18,15 +17,14 @@ exists = os.path.exists
 
 
 BD_DEVEL = "BD_DEVEL" in os.environ
-
 BD_PIPELINE_DIR = os.getenv("BD_PIPELINE_DIR")
 
-BD_RESOURCES_DIR = os.getenv("BD_RESOURCES_DIR")
+core_config = bd.config.load(cached=False)
 
-APP_ICON = join(BD_RESOURCES_DIR, "icons", "logo_bd.ico")
-PRESET_ICON = join(BD_RESOURCES_DIR, "icons", "preset.png")
-PROJECT_ICON = join(BD_RESOURCES_DIR, "icons", "project.png")
-LAUNCHER_ICON = join(BD_RESOURCES_DIR, "icons", "launcher.png")
+APP_ICON = join(core_config["resources_dir"], "icons", "logo_bd.ico")
+PRESET_ICON = join(core_config["resources_dir"], "icons", "preset.png")
+PROJECT_ICON = join(core_config["resources_dir"], "icons", "project.png")
+LAUNCHER_ICON = join(core_config["resources_dir"], "icons", "launcher.png")
 
 
 def px(value):
@@ -422,7 +420,7 @@ class NavigationBar(QtWidgets.QWidget):
         self.setFixedHeight(px(25))
         self._back_button = QtWidgets.QToolButton(self)
         self._back_button.setIcon(
-            QtGui.QIcon(join(BD_RESOURCES_DIR, "icons", "toolbutton_back.png"))
+            QtGui.QIcon(join(core_config["resources_dir"], "icons", "toolbutton_back.png"))
         )
         self._back_button.setIconSize(QtCore.QSize(px(5), px(5)))
         self._back_button.setFocusPolicy(QtCore.Qt.NoFocus)
@@ -519,7 +517,7 @@ class StatusBar(QtWidgets.QWidget):
         self.setFixedHeight(px(25))
         self._menu_button = QtWidgets.QToolButton(self)
         self._menu_button.setIcon(
-            QtGui.QIcon(join(BD_RESOURCES_DIR, "icons", "toolbutton_settingsMenu.png"))
+            QtGui.QIcon(join(core_config["resources_dir"], "icons", "toolbutton_settingsMenu.png"))
         )
         self._menu_button.setFocusPolicy(QtCore.Qt.NoFocus)
         self._menu_button.setFixedSize(self.height(), self.height())
@@ -655,9 +653,13 @@ class MainWindow(QtWidgets.QWidget):
         page_name = self._stacked_widget.widget(index).objectName()
         self._navbar.update(page_name, index)
 
-    def _on_project_selected(self):
-        next_page_index = 1
-        self._stacked_widget.setCurrentIndex(next_page_index)
+    def _on_project_selected(self, project_info):
+        preset_infos = project_info["presets"]
+        if len(preset_infos) == 1:
+            messenger.preset_selected.emit({"name": preset_infos[0]})
+        else:
+            next_page_index = 1
+            self._stacked_widget.setCurrentIndex(next_page_index)
 
     def _on_preset_selected(self):
         next_page_index = 2
@@ -816,36 +818,43 @@ def on_exit_clicked():
 def get_project_infos():
     import yaml
 
-    preset_root_dir = os.environ["BD_PRESETS_DIR"]
+    presets_dir = core_config["presets_dir"]
 
     project_infos = []
     project_infos_map = {}
 
-    for preset_name in os.listdir(preset_root_dir):
+    for preset_name in os.listdir(presets_dir):
 
-        preset_dir = join(preset_root_dir, preset_name)
+        preset_dir = join(presets_dir, preset_name)
 
-        config = join(preset_dir, "projects.yml")
-        if not exists(config):
-            continue
+        config_file = join(preset_dir, "config.yml")
+        if not exists(config_file):
 
-        with open(config, "r") as f:
-            data = yaml.load(f)
-            project_names = data.get("projects")
+            preset_version = core_config.get("presets", {}).get(preset_name)
 
-        for project_name in project_names:
-            project_info = project_infos_map.get(project_name)
-
-            if not project_info:
-                project_info = {
-                    "name": project_name,
-                    "presets": [preset_name]
-                }
-                project_infos_map[project_name] = project_info
-                project_infos.append(project_info)
+            if not preset_version:
                 continue
 
-            project_info["presets"].append(preset_name)
+            config_file = os.path.join(presets_dir, preset_name, preset_version, "config.yml")
+            if not exists(config_file):
+                continue
+
+        with open(config_file, "r") as f:
+            data = yaml.safe_load(f)
+            project_name = data.get("project")
+
+        project_info = project_infos_map.get(project_name)
+
+        if not project_info:
+            project_info = {
+                "name": project_name,
+                "presets": [preset_name]
+            }
+            project_infos_map[project_name] = project_info
+            project_infos.append(project_info)
+            continue
+
+        project_info["presets"].append(preset_name)
 
     return project_infos
 
@@ -902,8 +911,8 @@ def get_launcher_infos(preset_name):
 
 @QtCore.Slot(dict)
 def on_project_selected(project_info):
-    os.environ["BD_PROJECT"] = project_info["name"]
-    messenger.preset_infos_ready.emit([{"name": preset} for preset in project_info["presets"]])
+    preset_infos = [{"name": preset} for preset in project_info["presets"]]
+    messenger.preset_infos_ready.emit(preset_infos)
 
 
 @QtCore.Slot(dict)
@@ -1020,9 +1029,54 @@ class ApplicationSingleton(QtWidgets.QApplication):
         self.activated.emit()
 
 
-def _add_args(parser):
-    parser.add_argument("-u", "--user", type=str,
-                        help="Run as a specific user")
+class UserLoginDialog(QtWidgets.QDialog):
+
+    def __init__(self, default_name, parent=None):
+        super(UserLoginDialog, self).__init__(parent)
+        self._default_name = default_name
+        self._init_ui()
+        self._init_layout()
+        self._init_signals()
+
+    def _init_ui(self):
+        self.setWindowIcon(QtGui.QIcon(APP_ICON))
+        self.setWindowTitle("User Login")
+
+        self.setFixedSize(px(150), px(50))
+
+        self._name = QtWidgets.QLineEdit(self)
+        self._name.setText(self._default_name)
+        self._name.setPlaceholderText("User Name")
+        # self._pass = QtWidgets.QLineEdit(self)
+        # self._pass.setEchoMode(QtWidgets.QLineEdit.Password)
+
+        self._button_accept = QtWidgets.QPushButton("&Ok")
+        self._button_accept.setDefault(True)
+
+        self._button_reject = QtWidgets.QPushButton("&Cancel")
+        self._button_reject.setAutoDefault(True)
+
+        self._button_box = QtWidgets.QDialogButtonBox(self)
+        self._button_box.addButton(self._button_accept, QtWidgets.QDialogButtonBox.AcceptRole)
+        self._button_box.addButton(self._button_reject, QtWidgets.QDialogButtonBox.RejectRole)
+
+    def _init_layout(self):
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setMargin(px(5))
+        layout.setSpacing(px(5))
+        layout.addWidget(self._name)
+        # layout.addWidget(self._pass)
+        layout.addWidget(self._button_box)
+
+    def _init_signals(self):
+        self._button_accept.clicked.connect(self.accept)
+        self._button_reject.clicked.connect(self.reject)
+
+    @classmethod
+    def get_input(cls, default_name):
+        dialog = cls(default_name)
+        if dialog.exec_():
+            return {"name": dialog._name.text()}
 
 
 if __name__ == '__main__':
@@ -1030,15 +1084,6 @@ if __name__ == '__main__':
 
     import qdarkstyle
     import warnings
-
-    parser = ArgumentParser(prog="bd-desktop")
-
-    _add_args(parser)
-
-    args = parser.parse_args()
-
-    user = os.getenv("BD_USER", getpass.getuser())
-    os.environ["BD_USER"] = args.user if args.user else user
 
     app_guid = '87a2876e-7c5e-4688-9560-11f897f556d3'
 
@@ -1053,6 +1098,12 @@ if __name__ == '__main__':
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         app.setStyleSheet(qdarkstyle.load_stylesheet_pyside2())
+
+    credentials = UserLoginDialog.get_input(getpass.getuser())
+    if not credentials or not credentials.get("name"):
+        sys.exit(1)
+
+    os.environ["BD_USER"] = credentials.get("name")
 
     model_projects = ItemModel(model_protocol_projects)
     messenger.project_infos_ready.connect(model_projects.update)
@@ -1091,8 +1142,6 @@ if __name__ == '__main__':
 
     log_window.setGeometry(screen_geo)
 
-    log_window.show()
-
     tray_icon = SystemTrayIcon(main_window)
     tray_icon.show()
 
@@ -1102,7 +1151,7 @@ if __name__ == '__main__':
     app.activated.connect(tray_icon.on_singleton_activated)
 
     formatter = logging.Formatter(
-        '[ %(levelname)-8s ] %(asctime)s - %(message)s',
+        '[ %(levelname)-10s ] %(asctime)s - %(message)s',
         datefmt='%d-%m %H:%M'
     )
 
