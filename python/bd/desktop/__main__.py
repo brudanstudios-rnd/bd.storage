@@ -940,7 +940,7 @@ def on_launcher_selected(launcher_info):
 
     command = \
         ("{activate_exec} bd {devel} --blocking -p {preset}"
-         " launch --devel {launcher_name} -v {launcher_version}").format(
+         " launch {launcher_name} -v {launcher_version}").format(
              activate_exec=join(
                  BD_PIPELINE_DIR,
                  "bin",
