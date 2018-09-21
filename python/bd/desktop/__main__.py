@@ -22,6 +22,7 @@ BD_PIPELINE_DIR = os.getenv("BD_PIPELINE_DIR")
 core_config = bd.config.load(cached=False)
 
 APP_ICON = join(core_config["resources_dir"], "icons", "logo_bd.ico")
+DOWN_ARROW_ICON = join(core_config["resources_dir"], "icons", "down-arrow.png")
 PRESET_ICON = join(core_config["resources_dir"], "icons", "preset.png")
 PROJECT_ICON = join(core_config["resources_dir"], "icons", "project.png")
 LAUNCHER_ICON = join(core_config["resources_dir"], "icons", "launcher.png")
@@ -159,13 +160,22 @@ class LauncherItemDelegate(QtWidgets.QStyledItemDelegate):
 
             if has_multi_versions:
 
-                font = painter.font()
-                font.setPixelSize(px(6))
-                painter.setFont(font)
+                rect_icon = QtCore.QRect(
+                    rect.right() - px(7),
+                    rect.center().y() - px(5)/2,
+                    px(5), px(5)
+                )
 
-                painter.drawText(rect.adjusted(rect.width() - px(15), 0, 0, 0),
-                                 QtCore.Qt.AlignCenter,
-                                 u"▼")
+                icon = QtGui.QIcon(DOWN_ARROW_ICON)
+                icon.paint(
+                    painter,
+                    rect_icon,
+                    QtCore.Qt.AlignCenter
+                )
+
+                # painter.drawText(rect.adjusted(rect.width() - px(15), 0, 0, 0),
+                #                  QtCore.Qt.AlignCenter,
+                #                  u"▼")
         painter.restore()
 
     def on_hover_index_changed(self, index):
@@ -1042,7 +1052,8 @@ class UserLoginDialog(QtWidgets.QDialog):
         self.setWindowIcon(QtGui.QIcon(APP_ICON))
         self.setWindowTitle("User Login")
 
-        self.setFixedSize(px(150), px(50))
+        self.setSizePolicy(QtWidgets.QSizePolicy.MinimumExpanding, QtWidgets.QSizePolicy.MinimumExpanding)
+        self.setFixedWidth(px(150))
 
         self._name = QtWidgets.QLineEdit(self)
         self._name.setText(self._default_name)
