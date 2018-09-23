@@ -8,24 +8,24 @@ import getpass
 from PySide2 import QtWidgets, QtGui, QtCore, QtNetwork
 
 import bd.config
+import bd.logger
 from bd.exceptions import *
 
 LOGGER = logging.getLogger("desktop")
+LOGGER.setLevel(logging.INFO)
 
 join = os.path.join
 exists = os.path.exists
 
 
-BD_DEVEL = "BD_DEVEL" in os.environ
-BD_PIPELINE_DIR = os.getenv("BD_PIPELINE_DIR")
+USE_DEVEL_CORE_LIB = bool(int(os.getenv("BD_USE_DEVEL_CORE_LIB", 0)))
+USE_DEVEL_TOOLSETS = bool(int(os.getenv("BD_USE_DEVEL_TOOLSETS", 0)))
 
 core_config = bd.config.load(cached=False)
 
-APP_ICON = join(core_config["resources_dir"], "icons", "logo_bd.ico")
-DOWN_ARROW_ICON = join(core_config["resources_dir"], "icons", "down-arrow.png")
-PRESET_ICON = join(core_config["resources_dir"], "icons", "preset.png")
-PROJECT_ICON = join(core_config["resources_dir"], "icons", "project.png")
-LAUNCHER_ICON = join(core_config["resources_dir"], "icons", "launcher.png")
+model_projects = None
+model_presets = None
+model_launchers = None
 
 
 def px(value):
@@ -33,7 +33,7 @@ def px(value):
 
 
 class Messenger(QtCore.QObject):
-    """Qt implementation of the 'observer' pattern.
+    """The simplest Qt implementation of the 'observer' pattern.
 
     Objects connect to each other through the instance of
     this class, thus decoupling the whole system.
@@ -166,16 +166,12 @@ class LauncherItemDelegate(QtWidgets.QStyledItemDelegate):
                     px(5), px(5)
                 )
 
-                icon = QtGui.QIcon(DOWN_ARROW_ICON)
+                icon = QtGui.QIcon(QtGui.QPixmapCache.find("down-arrow"))
                 icon.paint(
                     painter,
                     rect_icon,
                     QtCore.Qt.AlignCenter
                 )
-
-                # painter.drawText(rect.adjusted(rect.width() - px(15), 0, 0, 0),
-                #                  QtCore.Qt.AlignCenter,
-                #                  u"▼")
         painter.restore()
 
     def on_hover_index_changed(self, index):
@@ -430,7 +426,7 @@ class NavigationBar(QtWidgets.QWidget):
         self.setFixedHeight(px(25))
         self._back_button = QtWidgets.QToolButton(self)
         self._back_button.setIcon(
-            QtGui.QIcon(join(core_config["resources_dir"], "icons", "toolbutton_back.png"))
+            QtGui.QIcon(QtGui.QPixmapCache.find("toolbutton_back"))
         )
         self._back_button.setIconSize(QtCore.QSize(px(5), px(5)))
         self._back_button.setFocusPolicy(QtCore.Qt.NoFocus)
@@ -452,7 +448,7 @@ class NavigationBar(QtWidgets.QWidget):
 
         self._project_icon = QtWidgets.QLabel(self)
 
-        img = QtGui.QImage(PROJECT_ICON)
+        img = QtGui.QPixmapCache.find("project").toImage()
         img = img.alphaChannel()
 
         color = QtGui.QColor(120, 120, 120)
@@ -527,7 +523,7 @@ class StatusBar(QtWidgets.QWidget):
         self.setFixedHeight(px(25))
         self._menu_button = QtWidgets.QToolButton(self)
         self._menu_button.setIcon(
-            QtGui.QIcon(join(core_config["resources_dir"], "icons", "toolbutton_settingsMenu.png"))
+            QtGui.QIcon(QtGui.QPixmapCache.find("toolbutton_settingsMenu"))
         )
         self._menu_button.setFocusPolicy(QtCore.Qt.NoFocus)
         self._menu_button.setFixedSize(self.height(), self.height())
@@ -612,9 +608,9 @@ class MainWindow(QtWidgets.QWidget):
     def _init_ui(self):
         self.setWindowFlags(self.windowFlags() & QtCore.Qt.Popup)
 
-        icon = QtGui.QIcon(APP_ICON)
+        icon = QtGui.QIcon(QtGui.QPixmapCache.find("logo_bd"))
         self.setWindowIcon(icon)
-        self.setWindowTitle("BD Pipeline Desktop{}".format("" if not BD_DEVEL else " - DEV"))
+        self.setWindowTitle("BD Pipeline Desktop{}".format("" if not USE_DEVEL_CORE_LIB else " - DEV"))
 
         self._stacked_widget = QtWidgets.QStackedWidget(self)
 
@@ -690,7 +686,7 @@ class SystemTrayIcon(QtWidgets.QSystemTrayIcon):
         self._init_signals()
 
     def _init_ui(self):
-        icon = QtGui.QIcon(APP_ICON)
+        icon = QtGui.QIcon(QtGui.QPixmapCache.find("logo_bd"))
         self.setIcon(icon)
         self.setToolTip("BD Pipeline Desktop")
         self._add_context_menu()
@@ -730,18 +726,6 @@ class SystemTrayIcon(QtWidgets.QSystemTrayIcon):
 
         self._widget.activateWindow()
         self._widget.raise_()
-
-
-class SingleLevelFilter(logging.Filter):
-    def __init__(self, level, reject):
-        self._level = level
-        self._reject = reject
-
-    def filter(self, record):
-        if self._reject:
-            return record.levelno != self._level
-        else:
-            return record.levelno == self._level
 
 
 class OutputLogWindow(QtWidgets.QDialog):
@@ -888,13 +872,13 @@ def get_launcher_infos(preset_name):
 
         if not exists(icon_filename):
             icon_filename = join(
-                BD_PIPELINE_DIR,
+                core_config.get("pipeline_dir"),
                 "resources",
                 "icons",
                 "launcher_{name}.png".format(name=launcher_name)
             )
             if not exists(icon_filename):
-                icon_filename = LAUNCHER_ICON
+                icon_filename = QtGui.QPixmapCache.find("launcher")
 
         launcher_info["icon_filename"] = icon_filename
 
@@ -939,15 +923,16 @@ def on_launcher_selected(launcher_info):
     process.readyReadStandardError.connect(lambda: on_process_error(process))
 
     command = \
-        ("{activate_exec} bd {devel} --blocking -p {preset}"
-         " launch {launcher_name} -v {launcher_version}").format(
+        ("{activate_exec} bd {devel_core} -p {preset}"
+         " launch {devel_toolsets} {launcher_name} -v {launcher_version}").format(
              activate_exec=join(
-                 BD_PIPELINE_DIR,
+                 core_config.get("pipeline_dir"),
                  "bin",
                  "activate" + (".bat" if sys.platform == "win32" else "")
              ),
-             devel="--devel" if BD_DEVEL else "",
+             devel_core="--devel" if USE_DEVEL_CORE_LIB else "",
              preset=str(messenger.get_preset()),
+             devel_toolsets="--devel" if USE_DEVEL_TOOLSETS else "",
              launcher_name=str(launcher_info["launcher_name"]),
              launcher_version=str(launcher_info["active_version"])
         )
@@ -965,49 +950,6 @@ def on_process_output(process):
 @QtCore.Slot(QtCore.QProcess)
 def on_process_error(process):
     sys.stderr.write(str(process.readAllStandardError()))
-
-
-#
-# model access protocols
-#
-
-def model_protocol_projects(role, index, data):
-    row = index.row()
-    if role == QtCore.Qt.DisplayRole:
-        return "  " + data[row]["name"]
-    elif role == QtCore.Qt.DecorationRole:
-        return QtGui.QIcon(PROJECT_ICON)
-    elif role == QtCore.Qt.UserRole:
-        return data[row]
-
-
-def model_protocol_presets(role, index, data):
-    row = index.row()
-    if role == QtCore.Qt.DisplayRole:
-        return "  " + data[row]["name"]
-    elif role == QtCore.Qt.DecorationRole:
-        return QtGui.QIcon(PRESET_ICON)
-    elif role == QtCore.Qt.UserRole:
-        return data[row]
-
-
-def model_protocol_launchers(role, index, data):
-    row = index.row()
-    col = index.column()
-    if role == QtCore.Qt.DisplayRole:
-        if col == 0:
-            return "  " + data[row]["launcher_name"].title()
-        else:
-            return data[row]["active_version"]
-    elif role == QtCore.Qt.DecorationRole:
-        if col == 0:
-            launcher_icon = data[row]["icon_filename"]
-            return QtGui.QIcon(launcher_icon)
-    elif role == QtCore.Qt.ToolTipRole:
-        if col == 1:
-            return "Click to choose the application version to run"
-    elif role == QtCore.Qt.UserRole:
-        return data[row]
 
 
 class ApplicationSingleton(QtWidgets.QApplication):
@@ -1049,7 +991,7 @@ class UserLoginDialog(QtWidgets.QDialog):
         self._init_signals()
 
     def _init_ui(self):
-        self.setWindowIcon(QtGui.QIcon(APP_ICON))
+        self.setWindowIcon(QtGui.QIcon(QtGui.QPixmapCache.find("logo_bd")))
         self.setWindowTitle("User Login")
 
         self.setSizePolicy(QtWidgets.QSizePolicy.MinimumExpanding, QtWidgets.QSizePolicy.MinimumExpanding)
@@ -1090,6 +1032,86 @@ class UserLoginDialog(QtWidgets.QDialog):
             return {"name": dialog._name.text()}
 
 
+def setup_logging(log_widget):
+    sys.stdout = OutputLogger(log_widget, QtGui.QColor("#c8c8c8"))
+    sys.stderr = OutputLogger(log_widget, QtGui.QColor("#c04545"))
+
+    bd.logger.setup_logging(
+        LOGGER,
+        "[ %(levelname)-10s ] %(asctime)s - %(message)s",
+        datefmt='%d-%m %H:%M'
+    )
+
+
+#
+# model access protocols
+#
+
+def model_protocol_projects(role, index, data):
+    row = index.row()
+    if role == QtCore.Qt.DisplayRole:
+        return "  " + data[row]["name"]
+    elif role == QtCore.Qt.DecorationRole:
+        return QtGui.QIcon(QtGui.QPixmapCache.find("project"))
+    elif role == QtCore.Qt.UserRole:
+        return data[row]
+
+
+def model_protocol_presets(role, index, data):
+    row = index.row()
+    if role == QtCore.Qt.DisplayRole:
+        return "  " + data[row]["name"]
+    elif role == QtCore.Qt.DecorationRole:
+        return QtGui.QIcon(QtGui.QPixmapCache.find("preset"))
+    elif role == QtCore.Qt.UserRole:
+        return data[row]
+
+
+def model_protocol_launchers(role, index, data):
+    row = index.row()
+    col = index.column()
+    if role == QtCore.Qt.DisplayRole:
+        if col == 0:
+            return "  " + data[row]["launcher_name"].title()
+        else:
+            return data[row]["active_version"]
+    elif role == QtCore.Qt.DecorationRole:
+        if col == 0:
+            launcher_icon = data[row]["icon_filename"]
+            return QtGui.QIcon(launcher_icon)
+    elif role == QtCore.Qt.ToolTipRole:
+        if col == 1:
+            return "Click to choose the application version to run"
+    elif role == QtCore.Qt.UserRole:
+        return data[row]
+
+
+def setup_models():
+    global model_projects
+    model_projects = ItemModel(model_protocol_projects)
+    messenger.project_infos_ready.connect(model_projects.update)
+
+    global model_presets
+    model_presets = ItemModel(model_protocol_presets)
+    messenger.preset_infos_ready.connect(model_presets.update)
+
+    global model_launchers
+    model_launchers = ItemModel(model_protocol_launchers, 2, 1)
+    messenger.launcher_infos_ready.connect(model_launchers.update)
+
+
+def cache_pixmaps():
+    for filename in ["logo_bd.ico",
+                     "down-arrow.png",
+                     "preset.png",
+                     "project.png",
+                     "launcher.png",
+                     "toolbutton_back.png",
+                     "toolbutton_settingsMenu.png"]:
+        path = join(core_config["resources_dir"], "icons", filename)
+        QtGui.QPixmapCache.insert(filename.split('.', 1)[0], QtGui.QPixmap(path))
+
+
 if __name__ == '__main__':
     sys.argv[0] = re.sub(r'(-script\.pyw?|\.exe)?$', '', sys.argv[0])
 
@@ -1100,35 +1122,48 @@ if __name__ == '__main__':
 
     app = ApplicationSingleton(app_guid, sys.argv)
 
+    # ensure that only one instance of the application
+    # is running in entire system
     if app.is_running():
         sys.exit(0)
 
+    # enable high dpi monitor support
     app.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling)
     app.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps)
 
+    # catch all QDarkStyle warnings
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         app.setStyleSheet(qdarkstyle.load_stylesheet_pyside2())
 
-    credentials = UserLoginDialog.get_input(getpass.getuser())
-    if not credentials or not credentials.get("name"):
-        sys.exit(1)
+    # track user credentials
+    #
+    username = os.getenv("BD_USER")
+    if not username:
 
-    os.environ["BD_USER"] = credentials.get("name")
+        # ask for username input
+        credentials = UserLoginDialog.get_input(getpass.getuser())
+        if not credentials or not credentials.get("name"):
+            sys.exit(1)
 
-    model_projects = ItemModel(model_protocol_projects)
-    messenger.project_infos_ready.connect(model_projects.update)
+        os.environ["BD_USER"] = credentials.get("name")
 
-    model_presets = ItemModel(model_protocol_presets)
-    messenger.preset_infos_ready.connect(model_presets.update)
+    cache_pixmaps()
 
-    model_launchers = ItemModel(model_protocol_launchers, 2, 1)
-    messenger.launcher_infos_ready.connect(model_launchers.update)
+    # prepare all item models to update its info
+    # whenever the appropriate signal is sent by the messenger
+    #
+    setup_models()
 
+    # update project, preset or launcher data depending
+    # on the context
+    #
     messenger.project_selected.connect(on_project_selected)
     messenger.preset_selected.connect(on_preset_selected)
     messenger.launcher_selected.connect(on_launcher_selected)
 
+    # initialize main application window
+    #
     main_window = MainWindow()
 
     screen_geo = app.desktop().availableGeometry(app.desktop().primaryScreen())
@@ -1141,41 +1176,29 @@ if __name__ == '__main__':
 
     main_window.show()
 
+    # initialize tray icon and
+    tray_icon = SystemTrayIcon(main_window)
+    tray_icon.show()
+
+    # load information about currently available projects
+    #
+    project_infos = get_project_infos()
+    messenger.project_infos_ready.emit(project_infos)
+
+    # pop up main application window whenever the tray icon
+    # is clicked
+    #
+    app.activated.connect(tray_icon.on_singleton_activated)
+
+    # initialize internal logging facility
+    #
     log_window = OutputLogWindow(main_window)
-
-    sys.stdout = OutputLogger(log_window, QtGui.QColor("#c8c8c8"))
-    sys.stderr = OutputLogger(log_window, QtGui.QColor("#c04545"))
-
     screen_geo = app.desktop().availableGeometry(app.desktop().primaryScreen())
     screen_geo.setTop(screen_geo.bottom() - px(300))
     screen_geo.setRight(main_window.geometry().left())
     screen_geo.setLeft(screen_geo.right() - px(600))
-
     log_window.setGeometry(screen_geo)
 
-    tray_icon = SystemTrayIcon(main_window)
-    tray_icon.show()
-
-    project_infos = get_project_infos()
-    messenger.project_infos_ready.emit(project_infos)
-
-    app.activated.connect(tray_icon.on_singleton_activated)
-
-    formatter = logging.Formatter(
-        '[ %(levelname)-10s ] %(asctime)s - %(message)s',
-        datefmt='%d-%m %H:%M'
-    )
-
-    stdout_handler = logging.StreamHandler(sys.stdout)
-    stdout_handler.addFilter(SingleLevelFilter(logging.INFO, False))
-    stdout_handler.setFormatter(formatter)
-    LOGGER.addHandler(stdout_handler)
-
-    stderr_handler = logging.StreamHandler(sys.stderr)
-    stderr_handler.addFilter(SingleLevelFilter(logging.INFO, True))
-    stderr_handler.setFormatter(formatter)
-    LOGGER.addHandler(stderr_handler)
-
-    LOGGER.setLevel(logging.INFO)
+    setup_logging(log_window)
 
     sys.exit(app.exec_())

@@ -2,7 +2,9 @@ import os
 import sys
 import logging
 
-LOGGER = logging.getLogger("bd")
+
+ROOT_LOGGER = logging.getLogger("bd")
+ROOT_LOGGER.setLevel(logging.INFO)
 
 
 class SingleLevelFilter(logging.Filter):
@@ -17,30 +19,39 @@ class SingleLevelFilter(logging.Filter):
             return record.levelno == self._level
 
 
-formatter = logging.Formatter(
-    '[ %(levelname)-10s ] %(asctime)s - %(name)s - %(message)s',
-    datefmt='%d-%m %H:%M'
-)
+is_setup = False
 
-stdout_handler = logging.StreamHandler(sys.stdout)
-stdout_handler.addFilter(SingleLevelFilter(logging.INFO, False))
-LOGGER.addHandler(stdout_handler)
 
-stderr_handler = logging.StreamHandler(sys.stderr)
-stderr_handler.addFilter(SingleLevelFilter(logging.INFO, True))
-LOGGER.addHandler(stderr_handler)
+def setup_logging(logger, format=None, datefmt='%d-%m %H:%M'):
+    if not format:
+        format = '[ %(levelname)-10s ] %(asctime)s - %(name)s - %(message)s'
 
-stdout_handler.setFormatter(formatter)
-stderr_handler.setFormatter(formatter)
+    formatter = logging.Formatter(
+        format,
+        datefmt=datefmt
+    )
 
-LOGGER.setLevel(logging.INFO)
+    stdout_handler = logging.StreamHandler(sys.stdout)
+    stdout_handler.addFilter(SingleLevelFilter(logging.INFO, False))
+    stdout_handler.setFormatter(formatter)
+    logger.addHandler(stdout_handler)
+
+    stderr_handler = logging.StreamHandler(sys.stderr)
+    stderr_handler.addFilter(SingleLevelFilter(logging.INFO, True))
+    stderr_handler.setFormatter(formatter)
+    logger.addHandler(stderr_handler)
 
 
 def get_logger(name):
 
-    if not name.startswith("bd."):
-        name = "bd." + name
+    global is_setup
 
-    return logging.getLogger(name)
+    if not is_setup:
+        setup_logging(ROOT_LOGGER)
+        is_setup = True
 
+    if name.startswith("bd."):
+        return logging.getLogger(name)
+
+    return ROOT_LOGGER.getChild(name)
 
