@@ -1,7 +1,7 @@
 import os
 import git
 import tempfile
-
+from distutils.version import StrictVersion
 import shutil
 
 from ..logger import get_logger
@@ -39,13 +39,8 @@ def publish():
         LOGGER.error("Please Tag your repository before publishing it")
         return False
 
-    latest_tag = None
-
-    committed_date = 0
-    for tag in repo.tags:
-        if committed_date < tag.commit.committed_date:
-            committed_date = tag.commit.committed_date
-            latest_tag = tag
+    tags = sorted(repo.tags, key=lambda x: StrictVersion(x.lstrip("v")))
+    version = tags[-1].name
 
     tree = repo.heads.master.commit.tree
 
@@ -78,9 +73,9 @@ def publish():
         origin = repo.create_remote("origin", url=repo_url)
 
         repo.git.add('--all')
-        repo.index.commit(latest_tag.name)
+        repo.index.commit(version)
 
-        artifact_name = '{}/{}'.format(repo_name, latest_tag.name)
+        artifact_name = '{}/{}'.format(repo_name, version)
 
         repo.create_tag(artifact_name)
 
