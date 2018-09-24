@@ -1,7 +1,6 @@
 __all__ = ["Loader"]
 
 import os
-from collections import OrderedDict
 import cPickle
 
 import metayaml
@@ -25,7 +24,6 @@ myml.OrderedDictYAMLLoader.construct_mapping = construct_mapping
 
 from ..logger import get_logger
 from ..exceptions import *
-from .. import utils
 
 join = os.path.join
 exists = os.path.exists

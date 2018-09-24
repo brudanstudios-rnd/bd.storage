@@ -1,6 +1,4 @@
 import os
-import logging
-import platform
 import cPickle
 
 from ..logger import get_logger
@@ -9,14 +7,7 @@ from ..exceptions import *
 
 LOGGER = get_logger(__name__)
 
-
-CURRENT_PLATFORM = {
-    "Linux": "lin",
-    "Windows": "win",
-    "Darwin": "mac"
-}.get(platform.system())
-
-os.environ["BD_OS"] = CURRENT_PLATFORM
+CURRENT_PLATFORM = os.environ["BD_OS"]
 
 _config = None
 

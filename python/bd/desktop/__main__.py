@@ -21,7 +21,7 @@ exists = os.path.exists
 USE_DEVEL_CORE_LIB = bool(int(os.getenv("BD_USE_DEVEL_CORE_LIB", 0)))
 USE_DEVEL_TOOLSETS = bool(int(os.getenv("BD_USE_DEVEL_TOOLSETS", 0)))
 
-core_config = bd.config.load(cached=False)
+core_config = None
 
 model_projects = None
 model_presets = None
@@ -887,7 +887,7 @@ def get_launcher_infos(preset_name):
             if version == "default":
                 continue
 
-            if not paths.get(bd.config.CURRENT_PLATFORM):
+            if not paths.get(os.getenv("BD_OS")):
                 continue
 
             launcher_info["versions"].append(version)
@@ -1148,6 +1148,12 @@ if __name__ == '__main__':
 
         os.environ["BD_USER"] = credentials.get("name")
 
+    # load core configuration
+    #
+    core_config = bd.config.load(cached=False)
+
+    # load and cache all icons
+    #
     cache_pixmaps()
 
     # prepare all item models to update its info

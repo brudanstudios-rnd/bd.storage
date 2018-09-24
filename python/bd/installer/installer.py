@@ -39,6 +39,5 @@ def install(name, version):
         name,
         version,
         toolbox_dir,
-        config.get_value("github_account"),
         config.get_value("github_deploy_repo")
     )
