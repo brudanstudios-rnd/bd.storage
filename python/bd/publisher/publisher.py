@@ -39,7 +39,7 @@ def publish():
         LOGGER.error("Please Tag your repository before publishing it")
         return False
 
-    tags = sorted(repo.tags, key=lambda x: StrictVersion(x.lstrip("v")))
+    tags = sorted(repo.tags, key=lambda x: StrictVersion(x.name.lstrip("v")))
     version = tags[-1].name
 
     tree = repo.heads.master.commit.tree
