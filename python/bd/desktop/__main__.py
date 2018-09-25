@@ -809,7 +809,7 @@ def on_exit_clicked():
         ApplicationSingleton.instance().quit()
 
 
-def get_project_infos():
+def get_project_infos(preset_name=None):
     import yaml
 
     presets_dir = core_config["presets_dir"]
@@ -817,7 +817,8 @@ def get_project_infos():
     project_infos = []
     project_infos_map = {}
 
-    for preset_name in os.listdir(presets_dir):
+    preset_names = [preset_name] if preset_name else os.listdir(presets_dir)
+    for preset_name in preset_names:
 
         preset_dir = join(presets_dir, preset_name)
 
@@ -1124,14 +1125,17 @@ if __name__ == '__main__':
 
     # ensure that only one instance of the application
     # is running in entire system
+    #
     if app.is_running():
         sys.exit(0)
 
     # enable high dpi monitor support
+    #
     app.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling)
     app.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps)
 
     # catch all QDarkStyle warnings
+    #
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         app.setStyleSheet(qdarkstyle.load_stylesheet_pyside2())
@@ -1183,12 +1187,15 @@ if __name__ == '__main__':
     main_window.show()
 
     # initialize tray icon and
+    #
     tray_icon = SystemTrayIcon(main_window)
     tray_icon.show()
 
-    # load information about currently available projects
+    # load information about currently available projects.
+    # if the preset name is already explicitly specified,
+    # use only the information from that preset
     #
-    project_infos = get_project_infos()
+    project_infos = get_project_infos(os.getenv("BD_PRESET"))
     messenger.project_infos_ready.emit(project_infos)
 
     # pop up main application window whenever the tray icon

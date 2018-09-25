@@ -141,15 +141,9 @@ def get_available_toolsets(devel=False):
 
             if not os.path.exists(toolset_dir):
 
-                if not config.get_value("is_centralized", False):
-                    if not installer.install(toolset_name, toolset_version):
-                        LOGGER.error("Unable to install revision '{}' "
-                                     "of '{}' toolset".format(toolset_version, toolset_name))
-                        return
-                else:
-                    LOGGER.error("Revision '{}' "
-                                 "of '{}' toolset is not installed yet".format(toolset_version, toolset_name))
-
+                if not installer.install(toolset_name, toolset_version):
+                    LOGGER.error("Unable to install revision '{}' "
+                                 "of '{}' toolset".format(toolset_version, toolset_name))
                     return
 
             revision_sha256_path = os.path.join(toolset_dir, ".sha256")

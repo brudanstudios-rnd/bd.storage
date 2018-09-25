@@ -77,7 +77,7 @@ class Loader(object):
 
             config_files = [config_file]
 
-            config_file = join(proj_preset_dir, "overrides", os.environ["BD_USER"], "config.yml")
+            config_file = join(config["pipeline_dir"], "overrides", "config.yml")
 
             if os.path.exists(config_file):
                 config_files.append(config_file)
