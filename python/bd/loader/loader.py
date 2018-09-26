@@ -1,14 +1,11 @@
 # -*- coding: utf-8 -*-
-__all__ = ["load_toolsets", "list_toolsets", "get_available_toolsets"]
+__all__ = ["load_toolsets", "get_available_toolsets"]
 
 import os
-
-from bd_hasher import get_directory_hash
 
 from ..logger import get_logger
 from .. import config
 from .. import hooks
-from .. import installer
 from .environment import ENV
 from .. import utils
 
@@ -101,11 +98,11 @@ def _check_dependencies(toolset_name, toolset_dir, all_toolset_names):
         return missing_toolsets
 
 
-def get_available_toolsets(devel=False):
+def get_available_toolsets(use_devel_toolsets=False):
     # configuration that tells us which toolsets to load
     #
-    toolbox_cfg_toolsets = config.get_value("toolbox")
-    if not toolbox_cfg_toolsets:
+    toolbox_config = config.get_value("toolbox")
+    if not toolbox_config:
         LOGGER.warning("Configuration 'toolbox' is not defined")
         return
 
@@ -114,12 +111,11 @@ def get_available_toolsets(devel=False):
 
     # locate all the toolsets specified in the configuration
     #
-    for toolset_name, toolset_config in toolbox_cfg_toolsets.iteritems():
+    for toolset_name, toolset_config in toolbox_config.iteritems():
 
         toolset_dir = None
-        toolset_version = "devel"
 
-        if devel:
+        if use_devel_toolsets:
             development_dir = utils.resolve(config.get_value("development_dir"))
             devel_toolset_dir = os.path.join(development_dir, "toolbox", toolset_name)
             if os.path.exists(devel_toolset_dir):
@@ -127,39 +123,14 @@ def get_available_toolsets(devel=False):
 
         if not toolset_dir:
 
-            toolset_version = toolset_config.get("version")
-            if not toolset_version:
-                LOGGER.error("A 'version' key is not specified for 'toolbox/{}' setting".format(toolset_name))
-                return
+            toolset_version = toolset_config["version"]
 
-            if toolset_version == "devel":
-                continue
-
-            pipeline_dir = utils.resolve(config.get_value("pipeline_dir"))
-
-            toolset_dir = os.path.join(pipeline_dir, "toolbox", toolset_name, toolset_version)
+            toolset_dir = os.path.join(
+                config.get_value("toolbox_dir"), toolset_name, toolset_version)
 
             if not os.path.exists(toolset_dir):
-
-                if not installer.install(toolset_name, toolset_version):
-                    LOGGER.error("Unable to install revision '{}' "
-                                 "of '{}' toolset".format(toolset_version, toolset_name))
-                    return
-
-            revision_sha256_path = os.path.join(toolset_dir, ".sha256")
-            if not os.path.exists(revision_sha256_path):
-                LOGGER.error("Revision '{}' of '{}' toolset has missing "
-                             "checksum file. Please make sure the "
-                             "synchronization is finished.".format(toolset_version, toolset_name))
-                return
-
-            with open(revision_sha256_path, "r") as f:
-                revision_sha256 = f.read()
-
-            if revision_sha256 != get_directory_hash(toolset_dir):
-                LOGGER.error("Unable to load revision '{}' "
-                             "of '{}' toolset. Checksum mismatch. Please make sure the "
-                             "toolset is installed correctly.".format(toolset_version, toolset_name))
+                LOGGER.error("Unable to find an installed "
+                             "'{}/{}' toolset".format(toolset_name, toolset_version))
                 return
 
         toolsets_to_load.append((toolset_name, toolset_version, toolset_dir))
@@ -170,7 +141,7 @@ def get_available_toolsets(devel=False):
 def load_toolsets(
         app_name,
         app_version=None,
-        devel=False):
+        use_devel_toolsets=False):
     """Find and load all toolsets
 
     Args:
@@ -178,7 +149,7 @@ def load_toolsets(
 
     Kwargs:
         app_version (str): the version of the app to load modules for(2017.5, 16.0.736, ...).
-        devel (bool): whether to load development toolsets first.
+        use_devel_toolsets (bool): whether to load development toolsets first.
 
     Returns:
         True on success, False otherwise.
@@ -200,7 +171,7 @@ def load_toolsets(
 
     ENV.prepend("PYTHONPATH", os.path.join(proj_preset_dir, "resources", "python"))
 
-    toolsets_to_load = get_available_toolsets(devel)
+    toolsets_to_load = get_available_toolsets(use_devel_toolsets)
 
     if not toolsets_to_load:
         return False
@@ -238,24 +209,3 @@ def load_toolsets(
     hooks.execute("bd.loader.finalize", ENV).all()
 
     return True
-
-
-def list_toolsets(devel=False):
-    """
-    List all toolsets available for loading.
-
-    Kwargs:
-        devel  (bool): whether to load development toolsets first.
-
-    """
-    toolsets_to_load = get_available_toolsets(devel)
-
-    if not toolsets_to_load:
-        LOGGER.warning("There is no toolsets to list")
-        return
-
-    for toolset_name, toolset_version, toolset_dir in toolsets_to_load:
-
-        LOGGER.info('{} - {} - {}'.format(toolset_name,
-                                          toolset_version,
-                                          toolset_dir))

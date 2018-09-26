@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 __all__ = ["create"]
 import os
-import logging
 
 import git
 

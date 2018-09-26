@@ -1,8 +1,8 @@
 import os
 
 from bd.logger import get_logger
-import bd.config as config
-import bd.loader as loader
+from bd import config
+from bd import loader
 
 LOGGER = get_logger(__name__)
 

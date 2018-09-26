@@ -12,8 +12,8 @@ except Exception as e:
     print "ERROR: Unable to find 'git' command.", e
     sys.exit(1)
 
-import bd.config as config
-import bd.factory as factory
+from bd import config
+from bd import creator
 from bd.logger import get_logger
 from bd.exceptions import *
 
@@ -29,7 +29,7 @@ def _add_args(parser):
 
 def _create(name):
     try:
-        factory.create(name)
+        creator.create(name)
     except Error as e:
         LOGGER.error(e)
         sys.exit(1)
