@@ -4,9 +4,8 @@ import getpass
 from argparse import ArgumentParser
 
 from bd.logger import get_logger
-import bd.config as config
-import bd.launcher as launcher
-
+from bd import config
+from bd import launcher
 from bd.exceptions import *
 
 LOGGER = get_logger(__name__)

@@ -7,7 +7,7 @@ import logging
 import getpass
 
 from bd.logger import get_logger
-import bd.config as config
+from bd import config
 from bd.exceptions import *
 
 LOGGER = get_logger(__name__)
@@ -17,6 +17,13 @@ try:
 except Exception as e:
     print "ERROR: Unable to find 'git' command.", e
     sys.exit(1)
+
+
+def _add_args(parser):
+    parser.add_argument("toolset_name",
+                        help="The name of toolset to create",
+                        type=str)
+    parser.set_defaults(which="create")
 
 
 def _publish():
