@@ -33,7 +33,8 @@ _config = None
 
 
 def _load_config(preset=None):
-    if "BD_PIPELINE_DIR" not in os.environ:
+    pipeline_dir = os.getenv("BD_PIPELINE_DIR")
+    if not pipeline_dir:
         raise PipelineNotActivatedError()
 
     base64_config = os.getenv("BD_CORE_CONFIG_DATA")
@@ -47,35 +48,31 @@ def _load_config(preset=None):
         raise ConfigDeserializationError(details={"var_name": "BD_CORE_CONFIG_DATA"})
 
     if not preset:
-        preset = os.getenv("BD_PRESET")
+        preset = config.get("current_preset")
 
-    # BD_PRESET could be undefined if there was no --config-name option specified
+    # BD_PRESET_NAME could be undefined if there was no --config-name option specified
     # in the command line
     if preset:
 
-        proj_preset_dir = os.getenv("BD_PRESET_DIR")
+        preset_version = config["presets"].get(preset)
 
-        if not proj_preset_dir:
+        if preset_version:
+            preset_dir = join(os.environ["BD_PRESETS_DIR"], preset, preset_version)
+        else:
+            preset_dir = join(os.environ["BD_PRESETS_DIR"], preset)
 
-            preset_version = config.get("presets", {}).get(preset)
+        if not exists(preset_dir):
+            raise ProjectPresetNotFoundError(details={"preset_name": preset})
 
-            if preset_version:
-                proj_preset_dir = join(config["presets_dir"], preset, preset_version)
-            else:
-                proj_preset_dir = join(config["presets_dir"], preset)
+        config["preset_dir"] = preset_dir
 
-            if not exists(proj_preset_dir):
-                raise ProjectPresetNotFoundError(details={"preset_name": preset})
-
-        config["proj_preset_dir"] = proj_preset_dir
-
-        config_file = join(proj_preset_dir, 'config.yml')
+        config_file = join(preset_dir, 'config.yml')
         if not exists(config_file):
             raise FilesystemPathNotFoundError(details={"path": config_file})
 
         config_files = [config_file]
 
-        config_file = join(config["pipeline_dir"], "overrides", "config.yml")
+        config_file = join(pipeline_dir, "overrides", "config.yml")
 
         if os.path.exists(config_file):
             config_files.append(config_file)
@@ -109,17 +106,17 @@ def load(cached=True, preset=None):
 
     if _config is None:
 
-        base64_config = os.getenv("BD_CONFIG_DATA")
+        base64_config = os.getenv("BD_PRESET_CONFIG_DATA")
 
         if base64_config:
             try:
                 _config = cPickle.loads(base64_config.decode("base64", "strict"))
             except Exception:
-                raise ConfigDeserializationError(details={"var_name": "BD_CONFIG_DATA"})
+                raise ConfigDeserializationError(details={"var_name": "BD_PRESET_CONFIG_DATA"})
         else:
             _config = _load_config()
 
-            os.environ["BD_CONFIG_DATA"] = cPickle.dumps(_config, 2).encode("base64", "strict")
+            os.environ["BD_PRESET_CONFIG_DATA"] = cPickle.dumps(_config, 2).encode("base64", "strict")
 
     return _config
 

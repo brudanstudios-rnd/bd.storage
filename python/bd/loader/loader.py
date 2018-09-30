@@ -12,6 +12,8 @@ from .. import utils
 
 LOGGER = get_logger(__name__)
 
+USE_DEVEL_TOOLSETS = bool(int(os.getenv("BD_USE_DEVEL_TOOLSETS", 0)))
+
 
 def _execute_bd_init(directory):
 
@@ -98,7 +100,7 @@ def _check_dependencies(toolset_name, toolset_dir, all_toolset_names):
         return missing_toolsets
 
 
-def get_available_toolsets(use_devel_toolsets=False):
+def get_available_toolsets():
     # configuration that tells us which toolsets to load
     #
     toolbox_config = config.get_value("toolbox")
@@ -115,8 +117,8 @@ def get_available_toolsets(use_devel_toolsets=False):
 
         toolset_dir = None
 
-        if use_devel_toolsets:
-            development_dir = utils.resolve(config.get_value("development_dir"))
+        if USE_DEVEL_TOOLSETS:
+            development_dir = utils.resolve(os.environ["BD_DEVEL_DIR"])
             devel_toolset_dir = os.path.join(development_dir, "toolbox", toolset_name)
             if os.path.exists(devel_toolset_dir):
                 toolset_dir = devel_toolset_dir
@@ -126,7 +128,8 @@ def get_available_toolsets(use_devel_toolsets=False):
             toolset_version = toolset_config["version"]
 
             toolset_dir = os.path.join(
-                config.get_value("toolbox_dir"), toolset_name, toolset_version)
+                os.environ["BD_TOOLBOX_DIR"], toolset_name, toolset_version
+            )
 
             if not os.path.exists(toolset_dir):
                 LOGGER.error("Unable to find an installed "
@@ -138,10 +141,7 @@ def get_available_toolsets(use_devel_toolsets=False):
     return toolsets_to_load
 
 
-def load_toolsets(
-        app_name,
-        app_version=None,
-        use_devel_toolsets=False):
+def load_toolsets(app_name, app_version=None):
     """Find and load all toolsets
 
     Args:
@@ -149,7 +149,6 @@ def load_toolsets(
 
     Kwargs:
         app_version (str): the version of the app to load modules for(2017.5, 16.0.736, ...).
-        use_devel_toolsets (bool): whether to load development toolsets first.
 
     Returns:
         True on success, False otherwise.
@@ -157,26 +156,26 @@ def load_toolsets(
     """
     LOGGER.info("Loading toolsets for {}-{}".format(app_name, app_version))
 
-    proj_preset_dir = utils.resolve(config.get_value("proj_preset_dir"))
+    preset_dir = utils.resolve(config.get_value("preset_dir"))
 
     this_directory = os.path.dirname(os.path.abspath(__file__))
 
     # load hooks
     hook_search_paths = [
         os.path.join(this_directory, "hooks"),
-        os.path.join(proj_preset_dir, "hooks")
+        os.path.join(preset_dir, "hooks")
     ]
 
     hooks.load_hooks(hook_search_paths)
 
-    ENV.prepend("PYTHONPATH", os.path.join(proj_preset_dir, "resources", "python"))
+    ENV.prepend("PYTHONPATH", os.path.join(preset_dir, "resources", "python"))
 
-    toolsets_to_load = get_available_toolsets(use_devel_toolsets)
+    toolsets_to_load = get_available_toolsets()
 
     if not toolsets_to_load:
         return False
 
-    ENV.putenv("BD_HOOKPATH", os.path.join(proj_preset_dir, "hooks"))
+    ENV.putenv("BD_HOOKPATH", os.path.join(preset_dir, "hooks"))
 
     all_toolset_names = frozenset([name for name, _, _ in toolsets_to_load])
 

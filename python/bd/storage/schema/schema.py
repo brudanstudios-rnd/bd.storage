@@ -29,9 +29,9 @@ class Schema(object):
 
     @classmethod
     def new(cls, schema_name, accessor):
-        proj_preset_dir = pathlib2.Path(config.get_value("proj_preset_dir"))
+        preset_dir = pathlib2.Path(config.get_value("preset_dir"))
 
-        schema_dir = proj_preset_dir / "schemas" / schema_name
+        schema_dir = preset_dir / "schemas" / schema_name
 
         if not schema_dir.exists():
             LOGGER.error("Schema directory "
@@ -64,7 +64,7 @@ class Schema(object):
                         SchemaFile.new(current_dir / filename)
                     continue
 
-                labels = match.group(1).split(':')
+                labels = match.group(1).split('-')
                 self._anchor_items[frozenset(labels)] = SchemaAnchor.new(current_dir / filename)
 
     def get_anchor_item(self, labels):

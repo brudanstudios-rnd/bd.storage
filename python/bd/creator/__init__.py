@@ -56,7 +56,7 @@ def _init_all(toolset_dir):
         raise UnableToMakeDirectoryError(details={"dirname": toolset_dir,
                                                   "exc_msg": str(e)})
 
-    github_account = config.get_value("github_account")
+    github_account = os.environ["BD_GITHUB_ACCOUNT"]
 
     repo_url = "git@github.com:{}/bd-toolset-template.git".format(github_account)
 
@@ -76,7 +76,7 @@ def _init_all(toolset_dir):
 
 def create(name):
 
-    development_dir = utils.resolve(config.get_value("development_dir"))
+    development_dir = utils.resolve(os.environ["BD_DEVEL_DIR"])
     if not exists(development_dir):
         raise FilesystemPathNotFoundError(details={"path": development_dir})
 

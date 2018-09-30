@@ -99,7 +99,7 @@ class LauncherItemDelegate(QtWidgets.QStyledItemDelegate):
         #
         rect = QtCore.QRect(option.rect)
 
-        # make margins to simlessly transition from left to right cells
+        # make margins to seamlessly transition from left to right cells
         #
         rect.adjust(self._margin if col == 0 else 0,
                     self._margin,
@@ -782,7 +782,7 @@ class OutputLogWindow(QtWidgets.QDialog):
 class OutputLogger(object):
     """Writes stdout, stderr to a QTextEdit."""
 
-    def __init__(self, edit, color=None):
+    def __init__(self, edit, color=None, callback=None):
         """Constructor.
 
         Args:
@@ -793,9 +793,12 @@ class OutputLogger(object):
         """
         self._edit = edit
         self._color = color
+        self._callback = callback
 
     def write(self, message):
         self._edit.write(message, self._color)
+        if self._callback:
+            self._callback()
 
 
 @QtCore.Slot()
@@ -809,13 +812,15 @@ def on_exit_clicked():
         ApplicationSingleton.instance().quit()
 
 
-def get_project_infos(preset_name=None):
+def get_project_infos():
     import yaml
 
-    presets_dir = core_config["presets_dir"]
+    presets_dir = os.environ["BD_PRESETS_DIR"]
 
     project_infos = []
     project_infos_map = {}
+
+    preset_name = core_config.get("current_preset")
 
     preset_names = [preset_name] if preset_name else os.listdir(presets_dir)
     for preset_name in preset_names:
@@ -825,12 +830,12 @@ def get_project_infos(preset_name=None):
         config_file = join(preset_dir, "config.yml")
         if not exists(config_file):
 
-            preset_version = core_config.get("presets", {}).get(preset_name)
+            preset_version = core_config["presets"].get(preset_name)
 
             if not preset_version:
                 continue
 
-            config_file = os.path.join(presets_dir, preset_name, preset_version, "config.yml")
+            config_file = os.path.join(preset_dir, preset_version, "config.yml")
             if not exists(config_file):
                 continue
 
@@ -864,22 +869,22 @@ def get_launcher_infos(preset_name):
 
         launcher_info = {"launcher_name": launcher_name, "versions": [], "active_version": None}
 
+        # icon_filename = join(
+        #     config.get("preset_dir"),
+        #     "resources",
+        #     "icons",
+        #     "launcher_{name}.png".format(name=launcher_name)
+        # )
+        #
+        # if not exists(icon_filename):
         icon_filename = join(
-            config.get("proj_preset_dir"),
+            os.environ["BD_PIPELINE_DIR"],
             "resources",
             "icons",
             "launcher_{name}.png".format(name=launcher_name)
         )
-
         if not exists(icon_filename):
-            icon_filename = join(
-                core_config.get("pipeline_dir"),
-                "resources",
-                "icons",
-                "launcher_{name}.png".format(name=launcher_name)
-            )
-            if not exists(icon_filename):
-                icon_filename = QtGui.QPixmapCache.find("launcher")
+            icon_filename = QtGui.QPixmapCache.find("launcher")
 
         launcher_info["icon_filename"] = icon_filename
 
@@ -923,17 +928,21 @@ def on_launcher_selected(launcher_info):
     process.readyReadStandardOutput.connect(lambda: on_process_output(process))
     process.readyReadStandardError.connect(lambda: on_process_error(process))
 
+    preset_name = str(messenger.get_preset())
+    preset_version = core_config["presets"].get(preset_name)
+
     command = \
-        ("{activate_exec} bd {devel_core} -p {preset}"
-         " launch {devel_toolsets} {launcher_name} -v {launcher_version}").format(
+        ("{activate_exec} bd{devel_core_lib}{devel_toolsets} -pn {preset}{preset_version}"
+         " launch {launcher_name} -v {launcher_version}").format(
              activate_exec=join(
-                 core_config.get("pipeline_dir"),
+                 os.environ["BD_PIPELINE_DIR"],
                  "bin",
                  "activate" + (".bat" if sys.platform == "win32" else "")
              ),
-             devel_core="--devel" if USE_DEVEL_CORE_LIB else "",
-             preset=str(messenger.get_preset()),
-             devel_toolsets="--devel" if USE_DEVEL_TOOLSETS else "",
+             devel_core_lib=" -dc" if USE_DEVEL_CORE_LIB else "",
+             devel_toolsets=" -dt" if USE_DEVEL_TOOLSETS else "",
+             preset=preset_name,
+             preset_version=" -pv {}".format(preset_version) if preset_version else "",
              launcher_name=str(launcher_info["launcher_name"]),
              launcher_version=str(launcher_info["active_version"])
         )
@@ -1035,7 +1044,7 @@ class UserLoginDialog(QtWidgets.QDialog):
 
 def setup_logging(log_widget):
     sys.stdout = OutputLogger(log_widget, QtGui.QColor("#c8c8c8"))
-    sys.stderr = OutputLogger(log_widget, QtGui.QColor("#c04545"))
+    sys.stderr = OutputLogger(log_widget, QtGui.QColor("#c04545"), log_widget.show)
 
     bd.logger.setup_logging(
         LOGGER,
@@ -1109,7 +1118,7 @@ def cache_pixmaps():
                      "launcher.png",
                      "toolbutton_back.png",
                      "toolbutton_settingsMenu.png"]:
-        path = join(core_config["resources_dir"], "icons", filename)
+        path = join(os.environ["BD_RESOURCES_DIR"], "icons", filename)
         QtGui.QPixmapCache.insert(filename.split('.', 1)[0], QtGui.QPixmap(path))
 
 
@@ -1195,7 +1204,7 @@ if __name__ == '__main__':
     # if the preset name is already explicitly specified,
     # use only the information from that preset
     #
-    project_infos = get_project_infos(os.getenv("BD_PRESET"))
+    project_infos = get_project_infos()
     messenger.project_infos_ready.emit(project_infos)
 
     # pop up main application window whenever the tray icon

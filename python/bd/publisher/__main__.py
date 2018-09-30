@@ -38,11 +38,6 @@ def main():
 
     logging.basicConfig(level=logging.INFO)
 
-    pipeline_dir = os.getenv("BD_PIPELINE_DIR")
-    if not pipeline_dir:
-        LOGGER.error("Undefined BD_PIPELINE_DIR environment variable. Please activate the pipeline")
-        sys.exit(1)
-
     os.environ["BD_USER"] = os.getenv("BD_USER", getpass.getuser())
 
     try:

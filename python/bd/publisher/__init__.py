@@ -66,7 +66,7 @@ def publish():
         repo = git.Repo.init(tmp_dir)
 
         repo_url = "git@github.com:{}/{}.git".format(
-            config.get_value("github_account"),
+            os.environ["BD_GITHUB_ACCOUNT"],
             config.get_value("github_deploy_repo")
         )
 

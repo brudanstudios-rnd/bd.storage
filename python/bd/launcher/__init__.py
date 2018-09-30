@@ -9,10 +9,9 @@ LOGGER = get_logger(__name__)
 
 def launch(app_name,
            app_version,
-           devel=False,
            unknown_args=[]):
 
-    if not loader.load_toolsets(app_name, app_version, devel):
+    if not loader.load_toolsets(app_name, app_version):
         return 1
 
     if not app_version or app_version == "default":
