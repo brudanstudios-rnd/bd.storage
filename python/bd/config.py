@@ -72,7 +72,7 @@ def _load_config(preset=None):
 
         config_files = [config_file]
 
-        config_file = join(pipeline_dir, "overrides", "config.yml")
+        config_file = join(os.environ["BD_OVERRIDES_DIR"], "config.yml")
 
         if os.path.exists(config_file):
             config_files.append(config_file)

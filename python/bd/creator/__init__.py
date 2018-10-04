@@ -78,7 +78,7 @@ def create(name):
 
     development_dir = utils.resolve(os.environ["BD_DEVEL_DIR"])
     if not exists(development_dir):
-        raise FilesystemPathNotFoundError(details={"path": development_dir})
+        os.makedirs(development_dir, exist_ok=True)
 
     toolset_dir = join(development_dir, name)
     if exists(toolset_dir):

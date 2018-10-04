@@ -27,9 +27,9 @@ def _add_args(parser):
     parser.set_defaults(which="create")
 
 
-def _create(name):
+def _create(toolset_name):
     try:
-        creator.create(name)
+        creator.create(toolset_name)
     except Error as e:
         LOGGER.error(e)
         sys.exit(1)
@@ -42,13 +42,6 @@ def main():
 
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO)
-
-    pipeline_dir = os.getenv("BD_PIPELINE_DIR")
-    if not pipeline_dir:
-        LOGGER.error("Undefined BD_PIPELINE_DIR environment variable. Please activate the pipeline.")
-        sys.exit(1)
-
     os.environ["BD_USER"] = os.getenv("BD_USER", getpass.getuser())
 
     try:
@@ -57,7 +50,7 @@ def main():
         LOGGER.error(e)
         sys.exit(1)
 
-    _create(args.name)
+    _create(args.toolset_name)
 
 
 if __name__ == '__main__':
