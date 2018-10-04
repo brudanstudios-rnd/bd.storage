@@ -1,6 +1,7 @@
 import os
 import cPickle
 
+import yaml
 import metayaml
 
 myml = metayaml.metayaml
@@ -18,7 +19,6 @@ def construct_mapping(self, node, deep=False):
 myml.OrderedDictYAMLLoader.construct_mapping_org = myml.OrderedDictYAMLLoader.construct_mapping
 myml.OrderedDictYAMLLoader.construct_mapping = construct_mapping
 
-
 from .logger import get_logger
 from .exceptions import *
 
@@ -27,7 +27,7 @@ exists = os.path.exists
 
 LOGGER = get_logger(__name__)
 
-CURRENT_PLATFORM = os.environ["BD_OS"]
+CURRENT_PLATFORM = os.environ.get("BD_OS")
 
 _config = None
 
@@ -144,3 +144,67 @@ def get_value(key, default=None, config=None, cached=True, preset=None):
             config = config[CURRENT_PLATFORM]
 
     return config
+
+
+def set_override_value(key, value):
+    config_file = join(os.environ["BD_OVERRIDES_DIR"], "config.yml")
+
+    config_data = {}
+
+    if exists(config_file):
+        with open(config_file, "r") as f:
+            config_data = yaml.safe_load(f) or {}
+
+    keys = key.strip().split("/")
+    num_keys = len(keys)
+
+    parent_branch = config_data
+
+    for i, key in enumerate(keys, start=1):
+
+        if not key:
+            continue
+
+        nested_branch = parent_branch.get(key)
+
+        if i == num_keys:
+            if nested_branch:
+                if isinstance(nested_branch, dict):
+                    raise Error(
+                        "Unable to add an override '{}'. Overwriting the "
+                        "configuration branch '{}' is not an acceptable "
+                        "operation.".format(
+                            '/'.join(keys),
+                            '/'.join(keys[:i])
+                        )
+                    )
+
+            parent_branch[key] = value
+        else:
+            if nested_branch:
+                if not isinstance(nested_branch, dict):
+                    raise Error(
+                        "Unable to add an override '{}'. Overwriting the "
+                        "configuration branch '{}' is not an acceptable "
+                        "operation.".format(
+                            '/'.join(keys),
+                            '/'.join(keys[:i])
+                        )
+                    )
+            else:
+                nested_branch = {}
+
+            parent_branch[key] = nested_branch
+            parent_branch = nested_branch
+
+    with open(config_file, "w") as f:
+        yaml.safe_dump(config_data, f, default_flow_style=False)
+
+
+if __name__ == '__main__':
+    os.environ["BD_OVERRIDES_DIR"] = "D:/bd-test-storage/overrides"
+
+    set_override_value(
+        "launchers/houdini/16.5.496/win",
+        '"C:/Program Files/Side Effects Software/Houdini 16.5.496/bin/houdinifx.exe"'
+    )
