@@ -78,22 +78,6 @@ class ConfigDeserializationError(ConfigurationError):
     default_message = "Unable to deserialize configuration from the environment variable '{var_name}'"
 
 
-class VCSError(Error):
-    pass
-
-
-class UnableToCloneRepositoryError(VCSError):
-    default_message = "Unable to clone '{repo_url}' into '{dirname}'. {exc_msg}"
-
-
-class RepositoryInitializationError(VCSError):
-    default_message = "Unable to initialize '{repo_url}' repository in '{dirname}'. {exc_msg}"
-
-
-class InvalidRepositoryUrlFormatError(VCSError):
-    default_message = "Invalid repository url format '{repo_url}'"
-
-
 class HookError(Error):
     pass
 
