@@ -4,7 +4,7 @@ import traceback
 
 class Error(Exception):
 
-    default_message = "Unspecified error occured"
+    default_message = "Unspecified error occurred"
 
     def __init__(self, message=None, details=None):
 

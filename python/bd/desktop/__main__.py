@@ -865,28 +865,25 @@ def get_launcher_infos(preset_name):
 
     launcher_infos = []
 
+    icons_dir_preset = join(config.get("preset_dir"), "resources", "icons")
+    icons_dir_global = join(os.environ["BD_RESOURCES_DIR"], "icons")
+
     for launcher_name, launcher_data in config.get("launchers").iteritems():
 
         launcher_info = {"launcher_name": launcher_name, "versions": [], "active_version": None}
 
-        # icon_filename = join(
-        #     config.get("preset_dir"),
-        #     "resources",
-        #     "icons",
-        #     "launcher_{name}.png".format(name=launcher_name)
-        # )
-        #
-        # if not exists(icon_filename):
-        icon_filename = join(
-            os.environ["BD_PIPELINE_DIR"],
-            "resources",
-            "icons",
-            "launcher_{name}.png".format(name=launcher_name)
-        )
-        if not exists(icon_filename):
-            icon_filename = QtGui.QPixmapCache.find("launcher")
+        icon_pixmap = QtGui.QPixmapCache.find("launcher")
+        for icons_dir in [icons_dir_preset,
+                          icons_dir_global]:
+            icon_filename = join(
+                icons_dir,
+                "launcher_{name}.png".format(name=launcher_name)
+            )
+            if exists(icon_filename):
+                icon_pixmap = QtGui.QPixmap(icon_filename)
+                break
 
-        launcher_info["icon_filename"] = icon_filename
+        launcher_info["icon_pixmap"] = icon_pixmap
 
         for version, paths in launcher_data.iteritems():
 
@@ -1087,8 +1084,8 @@ def model_protocol_launchers(role, index, data):
             return data[row]["active_version"]
     elif role == QtCore.Qt.DecorationRole:
         if col == 0:
-            launcher_icon = data[row]["icon_filename"]
-            return QtGui.QIcon(launcher_icon)
+            icon_pixmap = data[row]["icon_pixmap"]
+            return QtGui.QIcon(icon_pixmap)
     elif role == QtCore.Qt.ToolTipRole:
         if col == 1:
             return "Click to choose the application version to run"
@@ -1111,6 +1108,9 @@ def setup_models():
 
 
 def cache_pixmaps():
+    icons_dir_internal = join(os.path.dirname(__file__), "resources", "icons")
+    icons_dir_global = join(os.environ["BD_RESOURCES_DIR"], "icons")
+
     for filename in ["logo_bd.ico",
                      "down-arrow.png",
                      "preset.png",
@@ -1118,8 +1118,17 @@ def cache_pixmaps():
                      "launcher.png",
                      "toolbutton_back.png",
                      "toolbutton_settingsMenu.png"]:
-        path = join(os.environ["BD_RESOURCES_DIR"], "icons", filename)
-        QtGui.QPixmapCache.insert(filename.split('.', 1)[0], QtGui.QPixmap(path))
+
+        icons_filepath = join(icons_dir_global, filename)
+        if not exists(icons_filepath):
+            icons_filepath = join(icons_dir_internal, filename)
+            if not exists(icons_filepath):
+                continue
+
+        QtGui.QPixmapCache.insert(
+            filename.split('.', 1)[0],
+            QtGui.QPixmap(icons_filepath)
+        )
 
 
 if __name__ == '__main__':

@@ -50,8 +50,6 @@ def _load_config(preset=None):
     if not preset:
         preset = config.get("current_preset")
 
-    # BD_PRESET_NAME could be undefined if there was no --config-name option specified
-    # in the command line
     if preset:
 
         preset_version = config["presets"].get(preset)
