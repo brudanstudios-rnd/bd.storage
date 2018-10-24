@@ -12,7 +12,7 @@ from .. import utils
 
 LOGGER = get_logger(__name__)
 
-USE_DEVEL_TOOLSETS = bool(int(os.getenv("BD_USE_DEVEL_TOOLSETS", 0)))
+USE_DEVEL_TOOLSETS = "BD_USE_DEVEL_TOOLSETS" in os.environ
 
 
 def _execute_bd_init(directory):
@@ -119,9 +119,10 @@ def get_available_toolsets():
 
         if USE_DEVEL_TOOLSETS:
             development_dir = utils.resolve(os.environ["BD_DEVEL_DIR"])
-            devel_toolset_dir = os.path.join(development_dir, "toolbox", toolset_name)
+            devel_toolset_dir = os.path.join(development_dir, toolset_name)
             if os.path.exists(devel_toolset_dir):
                 toolset_dir = devel_toolset_dir
+                toolset_version = "devel"
 
         if not toolset_dir:
 
@@ -154,9 +155,13 @@ def load_toolsets(app_name, app_version=None):
         True on success, False otherwise.
 
     """
-    LOGGER.info("Loading toolsets for {}-{}".format(app_name, app_version))
+    LOGGER.info("Loading toolsets for {}-{} ...".format(app_name, app_version))
 
-    preset_dir = utils.resolve(config.get_value("preset_dir"))
+    active_preset_info = utils.get_active_preset_info()
+    if not active_preset_info:
+        raise Exception("Unable to get active preset info.")
+
+    preset_dir = active_preset_info["dirname"]
 
     this_directory = os.path.dirname(os.path.abspath(__file__))
 
@@ -181,9 +186,12 @@ def load_toolsets(app_name, app_version=None):
 
     for toolset_name, toolset_version, toolset_dir in toolsets_to_load:
 
-        LOGGER.info('{} - {} - {}'.format(toolset_name,
-                                          toolset_version,
-                                          toolset_dir))
+        LOGGER.info(
+            'Loading toolset "{}" from "{}"'.format(
+                toolset_name,
+                toolset_dir
+            )
+        )
 
         missing_toolsets = _check_dependencies(toolset_name, toolset_dir, all_toolset_names)
 

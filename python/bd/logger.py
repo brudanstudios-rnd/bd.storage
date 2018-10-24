@@ -24,7 +24,7 @@ is_setup = False
 
 def setup_logging(logger, format=None, datefmt='%d-%m %H:%M'):
     if not format:
-        format = '[ %(levelname)-10s ] %(asctime)s - %(name)s - %(message)s'
+        format = '[ %(levelname)-10s ] %(asctime)s - %(message)s'
 
     formatter = logging.Formatter(
         format,

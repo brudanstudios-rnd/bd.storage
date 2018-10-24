@@ -9,6 +9,7 @@ from PySide2 import QtWidgets, QtGui, QtCore, QtNetwork
 
 import bd.config
 import bd.logger
+from bd import utils
 from bd.exceptions import *
 
 LOGGER = logging.getLogger("desktop")
@@ -18,8 +19,8 @@ join = os.path.join
 exists = os.path.exists
 
 
-USE_DEVEL_CORE_LIB = bool(int(os.getenv("BD_USE_DEVEL_CORE_LIB", 0)))
-USE_DEVEL_TOOLSETS = bool(int(os.getenv("BD_USE_DEVEL_TOOLSETS", 0)))
+USE_DEVEL_CORE_LIB = "BD_USE_DEVEL_CORE_LIB" in os.environ
+USE_DEVEL_TOOLSETS = "BD_USE_DEVEL_TOOLSETS" in os.environ
 
 core_config = None
 
@@ -662,7 +663,7 @@ class MainWindow(QtWidgets.QWidget):
     def _on_project_selected(self, project_info):
         preset_infos = project_info["presets"]
         if len(preset_infos) == 1:
-            messenger.preset_selected.emit({"name": preset_infos[0]})
+            messenger.preset_selected.emit(preset_infos[0])
         else:
             next_page_index = 1
             self._stacked_widget.setCurrentIndex(next_page_index)
@@ -815,29 +816,16 @@ def on_exit_clicked():
 def get_project_infos():
     import yaml
 
-    presets_dir = os.environ["BD_PRESETS_DIR"]
-
     project_infos = []
     project_infos_map = {}
 
-    preset_name = core_config.get("current_preset")
+    available_preset_infos = utils.get_available_preset_infos()
 
-    preset_names = [preset_name] if preset_name else os.listdir(presets_dir)
-    for preset_name in preset_names:
+    for preset_info in available_preset_infos:
 
-        preset_dir = join(presets_dir, preset_name)
-
-        config_file = join(preset_dir, "config.yml")
+        config_file = join(preset_info["dirname"], "config.yml")
         if not exists(config_file):
-
-            preset_version = core_config["presets"].get(preset_name)
-
-            if not preset_version:
-                continue
-
-            config_file = os.path.join(preset_dir, preset_version, "config.yml")
-            if not exists(config_file):
-                continue
+            continue
 
         with open(config_file, "r") as f:
             data = yaml.safe_load(f)
@@ -848,29 +836,36 @@ def get_project_infos():
         if not project_info:
             project_info = {
                 "name": project_name,
-                "presets": [preset_name]
+                "presets": [preset_info]
             }
             project_infos_map[project_name] = project_info
             project_infos.append(project_info)
             continue
 
-        project_info["presets"].append(preset_name)
+        project_info["presets"].append(preset_info)
 
     return project_infos
 
 
-def get_launcher_infos(preset_name):
+def get_launcher_infos(preset_info):
 
-    config = bd.config.load(cached=False, preset=preset_name)
+    preset_dir = preset_info["dirname"]
+
+    config = bd.config.load(cached=False, preset_dir=preset_dir)
 
     launcher_infos = []
 
-    icons_dir_preset = join(config.get("preset_dir"), "resources", "icons")
+    icons_dir_preset = join(preset_dir, "resources", "icons")
     icons_dir_global = join(os.environ["BD_RESOURCES_DIR"], "icons")
 
     for launcher_name, launcher_data in config.get("launchers").iteritems():
 
-        launcher_info = {"launcher_name": launcher_name, "versions": [], "active_version": None}
+        launcher_info = {
+            "launcher_name": launcher_name,
+            "versions": [],
+            "active_version": None,
+            "preset_info": preset_info
+        }
 
         icon_pixmap = QtGui.QPixmapCache.find("launcher")
         for icons_dir in [icons_dir_preset,
@@ -908,13 +903,12 @@ def get_launcher_infos(preset_name):
 
 @QtCore.Slot(dict)
 def on_project_selected(project_info):
-    preset_infos = [{"name": preset} for preset in project_info["presets"]]
-    messenger.preset_infos_ready.emit(preset_infos)
+    messenger.preset_infos_ready.emit(project_info["presets"])
 
 
 @QtCore.Slot(dict)
 def on_preset_selected(preset_info):
-    launcher_infos = get_launcher_infos(preset_info["name"])
+    launcher_infos = get_launcher_infos(preset_info)
     messenger.launcher_infos_ready.emit(launcher_infos)
 
 
@@ -925,8 +919,8 @@ def on_launcher_selected(launcher_info):
     process.readyReadStandardOutput.connect(lambda: on_process_output(process))
     process.readyReadStandardError.connect(lambda: on_process_error(process))
 
-    preset_name = str(messenger.get_preset())
-    preset_version = core_config["presets"].get(preset_name)
+    preset_name = launcher_info["preset_info"]["name"]
+    preset_version = launcher_info["preset_info"]["version"]
 
     command = \
         ("{activate_exec} bd{devel_core_lib}{devel_toolsets} -pn {preset}{preset_version}"
@@ -1158,21 +1152,7 @@ if __name__ == '__main__':
         warnings.simplefilter("ignore")
         app.setStyleSheet(qdarkstyle.load_stylesheet_pyside2())
 
-    # track user credentials
-    #
-    username = os.getenv("BD_USER")
-    if not username:
-
-        # ask for username input
-        credentials = UserLoginDialog.get_input(getpass.getuser())
-        if not credentials or not credentials.get("name"):
-            sys.exit(1)
-
-        os.environ["BD_USER"] = credentials.get("name")
-
-    # load core configuration
-    #
-    core_config = bd.config.load(cached=False)
+    os.environ["BD_ACTIVE"] = ""
 
     # load and cache all icons
     #

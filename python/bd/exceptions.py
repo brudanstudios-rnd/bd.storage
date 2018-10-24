@@ -67,7 +67,7 @@ class ProjectPresetNotFoundError(ConfigurationError):
 
 
 class ProjectConfigurationFilesNotFound(ConfigurationError):
-    default_message = "Project configuration files not found for preset '{preset_name}'"
+    default_message = "Preset configuration files not found in path: '{preset_dir}'"
 
 
 class ConfigValueTypeError(ConfigurationError):
