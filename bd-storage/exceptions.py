@@ -96,7 +96,7 @@ class HookLoadingError(HookError):
 
 
 class HookRegistrationError(HookError):
-    default_message = "Failed to register hook from 'path'. {exc_msg}"
+    default_message = "Failed to register hook from '{path}'. {exc_msg}"
 
 
 class CallbackExecutionError(HookError):

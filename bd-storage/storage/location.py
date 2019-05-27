@@ -1,14 +1,10 @@
-import os
 import logging
 from fnmatch import fnmatch
 from collections import OrderedDict
-import tempfile
-
 
 from .. import config
 from .. import hooks
 from ..exceptions import *
-from .accessor.base import Accessor
 from .accessor.filesystem import FileSystemAccessor
 from .schema import Schema
 

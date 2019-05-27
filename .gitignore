@@ -10,10 +10,10 @@ __pycache__/
 .settings/
 .idea/
 
-# virtual environment
-venv/
-
-# setuptools
+venv*/
 dist/
 build/
 *.egg-info/
+.tox/
+.pytest_cache/
+*.spec
