@@ -37,7 +37,7 @@ class Storage(object):
     def get_type(self):
         return self._type
 
-    def get_item(self, labels, fields):
+    def get_item(self, labels, fields, check_exists=True):
         if not self.match(labels):
             return
 
@@ -46,7 +46,7 @@ class Storage(object):
             return
 
         uid = schema_item.resolve(fields)
-        if not self._accessor.exists(uid):
+        if not self._accessor.exists(uid) and check_exists:
             return
 
         return StorageItem(labels, fields, uid, self)
@@ -218,13 +218,13 @@ class StoragePool(object):
 
             yield storage
 
-    def get_item(self, labels, fields={}, replicate=False):
+    def get_item(self, labels, fields={}, replicate=False, check_exists=True):
         if 'project' not in fields:
             fields['project'] = self._context.project
 
         for storage in self._get_matching_storages(labels):
 
-            item = storage.get_item(labels, fields)
+            item = storage.get_item(labels, fields, check_exists)
             if not item:
                 continue
 
