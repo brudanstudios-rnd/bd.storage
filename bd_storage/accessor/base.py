@@ -29,5 +29,9 @@ class Accessor(object):
     def exists(self, uid):
         pass
 
+    @abc.abstractmethod
+    def rm(self, uid):
+        pass
+
     def get_filesystem_path(self, uid, mode):
         pass

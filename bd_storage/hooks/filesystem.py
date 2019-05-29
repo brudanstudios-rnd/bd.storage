@@ -1,14 +1,15 @@
 import os
+import sys
+import shutil
 import logging
 
-from .base import Accessor
+from bd_storage.accessor.base import Accessor
 
-LOGGER = logging.getLogger(__name__)
+this = sys.modules[__name__]
+this._log = logging.getLogger(__name__.replace('bd_storage', 'bd'))
 
 
 class FileSystemAccessor(Accessor):
-
-    name = "filesystem-accessor"
 
     def __init__(self, root):
         self._root = root
@@ -34,8 +35,19 @@ class FileSystemAccessor(Accessor):
     def make_dir(self, uid):
         os.mkdir(self.resolve(uid))
 
+    def rm(self, uid):
+        path = self.resolve(uid)
+        if os.path.isdir(path):
+            shutil.rmtree(path, ignore_errors=True)
+        elif os.path.isfile(path):
+            os.unlink(path)
+
     def exists(self, uid):
         return os.path.exists(self.resolve(uid))
 
     def get_filesystem_path(self, uid, mode):
         return self.resolve(uid)
+
+
+def register(registry):
+    registry.add_hook('storage.accessor.init.filesystem-accessor', FileSystemAccessor.new)

@@ -1,7 +1,13 @@
 import os
+import sys
+import logging
+
 import metayaml
 
 from . import constants as c
+
+this = sys.modules[__name__]
+this._log = logging.getLogger(__name__.replace('bd_storage', 'bd'))
 
 
 class SchemaItem(object):
@@ -81,12 +87,13 @@ class SchemaItem(object):
                              for label in trigger.get("labels", [])])
         return _labels.issubset(labels)
 
-    def resolve(self, context):
-        resolved_path = ""
+    def resolve(self, fields):
+        resolved_path = ''
 
         try:
-            resolved_path = self.template.format(**context)
-        except:
+            resolved_path = self.template.format(**fields)
+        except KeyError as e:
+            this._log.error('missing field: {}'.format(e))
             pass
 
         return resolved_path
@@ -95,7 +102,7 @@ class SchemaItem(object):
     def basename(self):
         basename = self._path.name
         if self.config:
-            basename = self.config.get("format", basename)
+            basename = self.config.get('format', basename)
         return basename
 
     @property
@@ -104,7 +111,6 @@ class SchemaItem(object):
             return self._template
 
         basename = self.basename
-
         parent_item = self.parent
 
         # if it's the root of the schema
@@ -131,9 +137,9 @@ class SchemaItem(object):
         return str(self)
 
     def __cmp__(self, other):
-        self_keys = set(c.TMPL_KEY_REGEX.findall(self.template))
-        other_keys = set(c.TMPL_KEY_REGEX.findall(other.template))
-        return cmp(len(self_keys), len(other_keys))
+        self_keys = set(c.template_key_regex.findall(self.template))
+        other_keys = set(c.template_key_regex.findall(other.template))
+        return (lambda a, b: (a > b)-(a < b))(len(self_keys), len(other_keys))
 
 
 class SchemaDir(SchemaItem):
@@ -148,4 +154,4 @@ class SchemaAnchor(SchemaItem):
 
     @property
     def basename(self):
-        return self.config.get("format", "")
+        return self.config.get('format', '')

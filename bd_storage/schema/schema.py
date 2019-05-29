@@ -1,11 +1,10 @@
 __all__ = ["Schema"]
 
 import os
+import sys
 import logging
 
 import pathlib2
-
-from ... import config
 
 from . import constants as c
 
@@ -16,7 +15,8 @@ from .item import \
     SchemaFile
 
 
-LOGGER = logging.getLogger(__name__)
+this = sys.modules[__name__]
+this._log = logging.getLogger(__name__.replace('bd_storage', 'bd'))
 
 
 class Schema(object):
@@ -28,18 +28,19 @@ class Schema(object):
         self._load()
 
     @classmethod
-    def new(cls, schema_name, accessor):
-        preset_dir = pathlib2.Path(config.get_value("preset_dir"))
+    def new(cls, preset_dir, schema_name, accessor):
+        preset_dir = pathlib2.Path(preset_dir)
 
         schema_dir = preset_dir / "schemas" / schema_name
 
         if not schema_dir.exists():
-            LOGGER.error("Schema directory "
-                         " '{}' doesn't exist".format(schema_dir))
+            this._log.error(
+                "Schema directory '{}' doesn't exist".format(schema_dir)
+            )
             return
 
         if accessor is None:
-            LOGGER.error("Unspecified Accessor object")
+            this._log.error("Unspecified Accessor object")
             return
 
         return cls(schema_dir, accessor)
@@ -57,7 +58,7 @@ class Schema(object):
 
             for filename in filenames:
 
-                match = c.TMPL_FILENAME_REGEX.match(filename)
+                match = c.template_filename_regex.match(filename)
 
                 if not match:
                     if not filename.endswith(".yml"):
@@ -70,9 +71,9 @@ class Schema(object):
     def get_anchor_item(self, labels):
         return self._anchor_items.get(frozenset(labels))
 
-    def _build_item(self, item, context):
+    def _build_item(self, item, fields):
 
-        target_path = item.resolve(context)
+        target_path = item.resolve(fields)
 
         if not target_path:
             return False
@@ -91,7 +92,7 @@ class Schema(object):
 
         for parent_item in reversed(parent_items):
 
-            target_dir_path = parent_item.resolve(context)
+            target_dir_path = parent_item.resolve(fields)
 
             if not target_dir_path:
                 return False
@@ -113,11 +114,11 @@ class Schema(object):
 
         return True
 
-    def build_structure(self, labels, context):
+    def build_structure(self, labels, fields):
         schema_item = self._anchor_items.get(frozenset(labels))
         if schema_item:
-            self._build_item(schema_item, context)
+            self._build_item(schema_item, fields)
 
         for schema_item in SchemaItem.items():
             if schema_item.is_triggered(labels):
-                self._build_item(schema_item, context)
+                self._build_item(schema_item, fields)
