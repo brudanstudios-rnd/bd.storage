@@ -18,26 +18,31 @@ this._log = logging.getLogger(__name__.replace('bd_storage', 'bd'))
 
 class Storage(object):
 
-    def __init__(self, name, accessor, schema, mask="*", type="local"):
-        self._name = name
+    def __init__(self, storage_name, accessor, schema, mask="*"):
+        self._name = storage_name
         self._accessor = accessor
         self._schema = schema
         self._label_patterns = [x.strip() for x in mask.split()]
-        self._type = type
 
-    def get_name(self):
+    @classmethod
+    def create(cls, storage_type, storage_name, accessor, schema, mask='*'):
+        if storage_type == 'local':
+            return LocalStorage(storage_name, accessor, schema, mask)
+        elif storage_type == 'remote':
+            return RemoteStorage(storage_name, accessor, schema, mask)
+        else:
+            this._log.error('Unsupported storage type \'{}\''.format(storage_type))
+
+    def name(self):
         return self._name
 
-    def get_accessor(self):
+    def accessor(self):
         return self._accessor
 
-    def get_schema(self):
+    def schema(self):
         return self._schema
 
-    def get_type(self):
-        return self._type
-
-    def get_item(self, labels, fields, check_exists=True):
+    def item(self, labels, fields):
         if not self.match(labels):
             return
 
@@ -46,66 +51,55 @@ class Storage(object):
             return
 
         uid = schema_item.resolve(fields)
-        if not self._accessor.exists(uid) and check_exists:
-            return
-
         return StorageItem(labels, fields, uid, self)
 
-    def put_item(self, source_item, overwrite=False):
-        source_storage = source_item.get_storage()
-
-        if source_storage is self:
-            return source_item
-
-        labels, fields = source_item.get_labels(), source_item.get_fields()
-
-        if not self.match(source_item.get_labels()):
-            return
-
-        target_schema_item = self._schema.get_anchor_item(labels)
-        if not target_schema_item:
-            return
-
-        uid = target_schema_item.resolve(fields)
-
-        target_item = StorageItem(labels, fields, uid, self)
-
-        if self._accessor.exists(uid) and not overwrite:
-            return target_item
-
-        self._schema.build_structure(labels, fields)
-
-        data = source_item.get_accessor().read(source_item.get_uid())
-
-        self._accessor.write(uid, data)
-        self._accessor.write(
-            uid + '.meta',
-            six.b(json.dumps({'labels': labels, 'fields': fields}, indent=2))
-        )
-
-        return target_item
-
-    def remove_item(self, source_item):
-        source_storage = source_item.get_storage()
-
-        if source_storage is self:
-            return source_item
-
-        labels, fields = source_item.get_labels(), source_item.get_fields()
-
-        if not self.match(source_item.get_labels()):
-            return
-
-        target_schema_item = self._schema.get_anchor_item(labels)
-        if not target_schema_item:
-            return
-
-        uid = target_schema_item.resolve(fields)
-        if not self._accessor.exists(uid):
-            return
-
-        self._accessor.rm(uid)
-        self._accessor.rm(uid + '.meta')
+    # def write_item(self, source_item, overwrite=False):
+    #     source_storage = source_item.storage()
+    #
+    #     if source_storage is self:
+    #         return source_item
+    #
+    #     labels, fields = source_item.labels(), source_item.fields()
+    #
+    #     if not self.match(source_item.labels()):
+    #         return
+    #
+    #     target_schema_item = self._schema.get_anchor_item(labels)
+    #     if not target_schema_item:
+    #         return
+    #
+    #     uid = target_schema_item.resolve(fields)
+    #
+    #     target_item = StorageItem(labels, fields, uid, self)
+    #
+    #     if self._accessor.exists(uid) and not overwrite:
+    #         return target_item
+    #
+    #     self._schema.build_structure(labels, fields)
+    #
+    #     return WriteIterator(self._accessor, uid)
+    #
+    # def remove_item(self, source_item):
+    #     source_storage = source_item.storage()
+    #
+    #     if source_storage is self:
+    #         return source_item
+    #
+    #     labels, fields = source_item.labels(), source_item.fields()
+    #
+    #     if not self.match(source_item.labels()):
+    #         return
+    #
+    #     target_schema_item = self._schema.get_anchor_item(labels)
+    #     if not target_schema_item:
+    #         return
+    #
+    #     uid = target_schema_item.resolve(fields)
+    #     if not self._accessor.exists(uid):
+    #         return
+    #
+    #     self._accessor.rm(uid)
+    #     self._accessor.rm(uid + '.meta')
 
     def match(self, labels):
         for label in labels:
@@ -135,6 +129,24 @@ class Storage(object):
         )
 
 
+class RemoteStorage(Storage):
+    pass
+
+
+class LocalStorage(Storage):
+
+    def get_path(self, labels, fields):
+        if not self.match(labels):
+            return
+
+        schema_item = self._schema.get_anchor_item(labels)
+        if not schema_item:
+            return
+
+        uid = schema_item.resolve(fields)
+        return self.accessor().resolve(uid)
+
+
 class StorageItem(object):
 
     def __init__(self, labels, fields, uid, storage=None):
@@ -143,24 +155,42 @@ class StorageItem(object):
         self._uid = uid
         self._storage = storage
 
-    def get_labels(self):
+    def labels(self):
         return self._labels
 
-    def get_fields(self):
+    def fields(self):
         return self._fields
 
-    def get_uid(self):
+    def uid(self):
         return self._uid
 
-    def get_storage(self):
+    def storage(self):
         return self._storage
 
-    def get_accessor(self):
+    def accessor(self):
         if not self._storage:
             return bd_hooks.execute(
                 'storage.accessor.init.filesystem-accessor'
             ).one()
-        return self._storage.get_accessor()
+        return self._storage.accessor()
+
+    def exists(self):
+        return self.accessor().exists(self._uid)
+
+    def open(self, mode):
+        if 'w' in mode:
+            self.storage().schema().build_structure(self._labels, self._fields)
+        return self.accessor().open(self._uid, mode)
+
+    def remove(self):
+        self.accessor().rm(self._uid)
+
+    def path(self):
+        if self._storage is None:
+            return self._uid
+
+        if isinstance(self._storage, LocalStorage):
+            return self._storage.get_path(self._labels, self._fields)
 
     def __str__(self):
         return self.__repr__()
@@ -170,8 +200,20 @@ class StorageItem(object):
             repr(self._labels),
             repr(self._fields),
             self._uid,
-            self._storage.get_name() if self._storage else None
+            self._storage.name() if self._storage else None
         )
+
+
+class DirectoryItem(StorageItem):
+    pass
+
+
+class FileItem(StorageItem):
+    pass
+
+
+class SequenceItem(StorageItem):
+    pass
 
 
 class StoragePool(object):
@@ -179,74 +221,121 @@ class StoragePool(object):
     def __init__(self, context):
         self._context = context
         self._storages = None
-        self._get_storages()
+        self._load_storages()
 
-    def _get_storages(self):
+    def _load_storages(self):
         if not self._storages:
 
             self._storages = OrderedDict()
 
             bd_hooks.load([os.path.join(os.path.dirname(bd_storage.__file__), 'hooks')])
 
-            cfg_storages = self._context.preset.config.get_value("storage")
+            storage_configs = self._context.preset.config.get_value("storage")
 
-            for name, cfg_storage in cfg_storages.items():
+            for storage_name, storage_config in storage_configs.items():
+
+                accessor_name = storage_config["accessor"]["name"]
+                accessor_kwargs = storage_config["accessor"].get("kwargs", {})
 
                 try:
                     accessor = bd_hooks.execute(
-                        "storage.accessor.init.{}".format(cfg_storage["accessor"]["name"]),
-                        **cfg_storage["accessor"].get("kwargs", {})
+                        "storage.accessor.init.{}".format(accessor_name),
+                        **accessor_kwargs
                     ).one()
                 except bd_hooks.exceptions.HookNotFoundError:
                     continue
 
-                schema = Schema.new(self._context.preset.dir, cfg_storage["schema"], accessor)
+                schema_name = storage_config["schema"]
+                schema = Schema.new(self._context.preset.dir, schema_name, accessor)
 
-                self._storages[name] = Storage(name,
-                                               accessor,
-                                               schema,
-                                               cfg_storage["mask"],
-                                               cfg_storage["type"])
+                storage = Storage.create(
+                    storage_config["type"],
+                    storage_name,
+                    accessor,
+                    schema,
+                    storage_config["mask"]
+                )
+                if storage:
+                    self._storages[storage_name] = storage
 
         return self._storages.values()
 
     def _get_matching_storages(self, labels):
-        for storage in self._get_storages():
+        storages = []
+        for storage in self._load_storages():
+            if storage.match(labels):
+                storages.append(storage)
+        return storages
 
-            if not storage.match(labels):
-                continue
+    def paths(self, labels, fields={}):
+        if 'project' not in fields:
+            fields['project'] = self._context.project
 
-            yield storage
+        paths = []
 
-    def get_item(self, labels, fields={}, replicate=False, check_exists=True):
+        for storage in self._get_matching_storages(labels):
+            item = storage.item(labels, fields)
+            if item:
+                path = item.path()
+                if path:
+                    paths.append(path)
+
+        return paths
+
+    def load_item(self, labels, fields={}, replicate=True):
         if 'project' not in fields:
             fields['project'] = self._context.project
 
         for storage in self._get_matching_storages(labels):
 
-            item = storage.get_item(labels, fields, check_exists)
-            if not item:
+            item = storage.item(labels, fields)
+            if not item.exists():
                 continue
 
             if not replicate:
                 return item
 
-            return self.put_item(item)
+            return self.save_item(item)
 
-    def put_item(self, source_item, overwrite=False):
-        target_item = None
+    def save_item(self, item, overwrite=False, progress_callback=None):
 
-        for storage in reversed(list(self._get_matching_storages(source_item.get_labels()))):
-            target_item = storage.put_item(source_item, overwrite) or target_item
+        target_items = []
+        target_descriptors = []
 
-        return target_item
+        for storage in self._get_matching_storages(item.labels()):
 
-    def new_item(self, labels, fields, path=None):
+            target_item = storage.item(item.labels(), item.fields())
+            if not target_item:
+                continue
+
+            target_items.append(target_item)
+            if not target_item.exists() or overwrite:
+                target_descriptors.append(target_item.open('wb+'))
+
+        size = 0
+        with item.open('rb') as src:
+
+            while True:
+
+                chunk = src.read(4096)
+                if not chunk:
+                    break
+
+                size += len(chunk)
+
+                if progress_callback is not None:
+                    progress_callback(size)
+
+                for target_descriptor in target_descriptors:
+                    target_descriptor.write(chunk)
+
+        for target_descriptor in target_descriptors:
+            target_descriptor.close()
+
+        return target_items[0]
+
+    def init_item(self, labels, fields, path=None):
         if 'project' not in fields:
             fields['project'] = self._context.project
 
-        return StorageItem(labels, fields, path, None)
-
-    def remove_item(self, source_item):
-        for storage in reversed(list(self._get_matching_storages(source_item.get_labels()))):
-            storage.remove_item(source_item)
+        return StorageItem(labels, fields, path)

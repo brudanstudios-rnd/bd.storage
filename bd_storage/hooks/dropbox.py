@@ -26,13 +26,19 @@ class DropboxAccessor(Accessor):
             return uid
         return '/'.join([self._root, uid])
 
-    def write(self, uid, data):
-        with open(self.resolve(uid), "wb") as f:
-            return f.write(data)
+    def open(self, uid, mode):
+        if 'r' in mode and not self.exists(uid):
+            return
 
-    def read(self, uid):
-        with open(self.resolve(uid), "rb") as f:
-            return f.read()
+        filename = self.resolve(uid)
+
+        if 'w' in mode:
+            try:
+                os.makedirs(os.path.dirname(filename))
+            except OSError:
+                pass
+
+        return open(filename, mode)
 
     def make_dir(self, uid):
         os.mkdir(self.resolve(uid))
@@ -46,9 +52,6 @@ class DropboxAccessor(Accessor):
 
     def exists(self, uid):
         return os.path.exists(self.resolve(uid))
-
-    def get_filesystem_path(self, uid, mode):
-        return
 
 
 def register(registry):

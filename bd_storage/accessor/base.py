@@ -14,11 +14,7 @@ class Accessor(object):
         return uid
 
     @abc.abstractmethod
-    def write(self, uid):
-        pass
-
-    @abc.abstractmethod
-    def read(self, uid):
+    def open(self, uid):
         pass
 
     @abc.abstractmethod
@@ -31,7 +27,4 @@ class Accessor(object):
 
     @abc.abstractmethod
     def rm(self, uid):
-        pass
-
-    def get_filesystem_path(self, uid, mode):
         pass

@@ -105,7 +105,6 @@ class Schema(object):
 
         if isinstance(item, SchemaFile):
             try:
-
                 with item.path.open("rb") as in_file:
                     with self._accessor.open(target_path, "wb") as out_file:
                         out_file.write(in_file.read())
