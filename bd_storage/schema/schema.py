@@ -6,8 +6,6 @@ import logging
 
 import pathlib2
 
-from . import constants as c
-
 from .item import \
     SchemaItem, \
     SchemaDir, \
@@ -48,25 +46,36 @@ class Schema(object):
     def _load(self):
         str_schema_dir = str(self._schema_dir.resolve())
 
-        for current_dir, nested_dirs, filenames in os.walk(str_schema_dir):
+        for root, dirs, files in os.walk(str_schema_dir):
 
-            current_dir = pathlib2.Path(current_dir)
-            if current_dir == self._schema_dir:
+            root = pathlib2.Path(root)
+            if root == self._schema_dir:
                 continue
 
-            SchemaDir.new(current_dir)
+            SchemaDir.new(root)
 
-            for filename in filenames:
+            for filename in files:
 
-                match = c.template_filename_regex.match(filename)
+                if filename.endswith('.yml'):
 
-                if not match:
-                    if not filename.endswith(".yml"):
-                        SchemaFile.new(current_dir / filename)
-                    continue
+                    # skip .yml files which names match
+                    # any directory name on the same level
+                    if filename[:-4] in dirs:
+                        continue
 
-                labels = match.group(1).split('-')
-                self._anchor_items[frozenset(labels)] = SchemaAnchor.new(current_dir / filename)
+                    if not filename.startswith('anchor__'):
+                        continue
+
+                    schema_anchor = SchemaAnchor.new(root / filename)
+
+                    labels = schema_anchor.config.get('labels')
+                    if not labels:
+                        continue
+
+                    self._anchor_items[frozenset(labels)] = schema_anchor
+
+                else:
+                    SchemaFile.new(root / filename)
 
     def get_anchor_item(self, labels):
         return self._anchor_items.get(frozenset(labels))
@@ -81,9 +90,7 @@ class Schema(object):
         if self._accessor.exists(target_path):
             return True
 
-        parent_item = item \
-            if isinstance(item, SchemaDir) \
-            else item.parent
+        parent_item = item if isinstance(item, SchemaDir) else item.parent
 
         parent_items = []
         while parent_item is not None:
@@ -119,5 +126,9 @@ class Schema(object):
             self._build_item(schema_item, fields)
 
         for schema_item in SchemaItem.items():
+
+            if isinstance(schema_item, SchemaAnchor):
+                continue
+
             if schema_item.is_triggered(labels):
                 self._build_item(schema_item, fields)

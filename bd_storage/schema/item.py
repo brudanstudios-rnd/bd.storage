@@ -12,7 +12,7 @@ this._log = logging.getLogger(__name__.replace('bd_storage', 'bd'))
 
 class SchemaItem(object):
 
-    _mapping = {}
+    _cached_items = {}
 
     def __init__(self, path):
         self._path = path
@@ -29,10 +29,10 @@ class SchemaItem(object):
 
     @classmethod
     def new(cls, path):
-        schema_item = cls._mapping.get(path)
+        schema_item = cls._cached_items.get(path)
         if schema_item is None:
             schema_item = cls(path)
-            cls._mapping[path] = schema_item
+            cls._cached_items[path] = schema_item
         return schema_item
 
     @property
@@ -41,7 +41,7 @@ class SchemaItem(object):
 
     @property
     def parent(self):
-        return self._mapping.get(self._path.parent)
+        return self._cached_items.get(self._path.parent)
 
     @property
     def children(self):
@@ -50,17 +50,18 @@ class SchemaItem(object):
     @property
     def config(self):
         if self._config is None:
+
             self._config = {}
 
             cfg_path = self._path
-            if self._path.suffix != ".yml":
-                cfg_path = self._path.with_suffix(".yml")
+            if self._path.suffix != '.yml':
+                cfg_path = self._path.with_suffix('.yml')
 
             if cfg_path.exists():
                 self._config = metayaml.read(
                     str(cfg_path.resolve()),
-                    defaults={"env": os.getenv}
-                ) or None
+                    defaults={'env': os.getenv}
+                )
 
         return self._config
 
@@ -69,14 +70,14 @@ class SchemaItem(object):
         if self._triggers:
             return self._triggers
 
-        self._triggers = self.config.get("triggers", [])
+        self._triggers = self.config.get('triggers', [])
 
         if self.parent is not None:
 
             self._triggers.extend([
                 trigger
                 for trigger in self.parent.triggers
-                if trigger.get("propagate", True)
+                if trigger.get('propagate', False)
             ])
 
         return self._triggers
@@ -84,7 +85,10 @@ class SchemaItem(object):
     def is_triggered(self, labels):
         _labels = frozenset([label
                              for trigger in self.triggers
-                             for label in trigger.get("labels", [])])
+                             for label in trigger.get('labels', [])])
+        if not _labels:
+            return False
+
         return _labels.issubset(labels)
 
     def resolve(self, fields):
@@ -93,7 +97,7 @@ class SchemaItem(object):
         try:
             resolved_path = self.template.format(**fields)
         except KeyError as e:
-            this._log.error('missing field: {}'.format(e))
+            this._log.error('missing field {} in format \'{}\''.format(e, self.template))
             pass
 
         return resolved_path
@@ -124,11 +128,11 @@ class SchemaItem(object):
 
     @classmethod
     def items(cls):
-        return cls._mapping.values()
+        return cls._cached_items.values()
 
     @classmethod
     def clear(cls):
-        cls._mapping.clear()
+        cls._cached_items.clear()
 
     def __str__(self):
         return "{}('{}')".format(self.__class__.__name__, self.template)
@@ -155,3 +159,7 @@ class SchemaAnchor(SchemaItem):
     @property
     def basename(self):
         return self.config.get('format', '')
+
+    @property
+    def labels(self):
+        return self.config.get('labels')
