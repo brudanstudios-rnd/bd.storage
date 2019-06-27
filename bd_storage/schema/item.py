@@ -1,6 +1,7 @@
 import os
 import sys
 import logging
+from fnmatch import fnmatch
 
 import metayaml
 
@@ -28,7 +29,7 @@ class SchemaItem(object):
             self.parent.children.append(self)
 
     @classmethod
-    def new(cls, path):
+    def create(cls, path):
         schema_item = cls._cached_items.get(path)
         if schema_item is None:
             schema_item = cls(path)
@@ -82,25 +83,23 @@ class SchemaItem(object):
 
         return self._triggers
 
-    def is_triggered(self, labels):
-        _labels = frozenset([label
-                             for trigger in self.triggers
-                             for label in trigger.get('labels', [])])
-        if not _labels:
+    def is_triggered(self, labels, fields):
+        if not self.triggers:
             return False
 
-        return _labels.issubset(labels)
+        for trigger in self.triggers:
 
-    def resolve(self, fields):
-        resolved_path = ''
+            expr = trigger.get('expression')
+            if not expr:
+                continue
 
-        try:
-            resolved_path = self.template.format(**fields)
-        except KeyError as e:
-            this._log.error('missing field {} in format \'{}\''.format(e, self.template))
-            pass
+            try:
+                if eval(expr, globals(), locals()):
+                    return True
+            except:
+                pass
 
-        return resolved_path
+        return False
 
     @property
     def basename(self):
@@ -159,7 +158,3 @@ class SchemaAnchor(SchemaItem):
     @property
     def basename(self):
         return self.config.get('format', '')
-
-    @property
-    def labels(self):
-        return self.config.get('labels')

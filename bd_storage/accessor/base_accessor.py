@@ -1,14 +1,15 @@
 import abc
-from .. import utils
 
 
 class Accessor(object):
 
     __metaclass__ = abc.ABCMeta
 
-    @utils.abstractclassmethod
-    def new(cls, **kwargs):
-        pass
+    def __init__(self, root):
+        self._root = root
+
+    def root(self):
+        return self._root
 
     def resolve(self, uid):
         return uid
@@ -22,7 +23,7 @@ class Accessor(object):
         pass
 
     @abc.abstractmethod
-    def make_dir(self, uid):
+    def make_dir(self, uid, recursive=False):
         pass
 
     @abc.abstractmethod
@@ -38,7 +39,7 @@ class Accessor(object):
         pass
 
     @abc.abstractmethod
-    def list(self, uid, relative=False):
+    def list(self, uid, relative=False, recursive=True):
         pass
 
     @abc.abstractmethod

@@ -4,9 +4,8 @@ import uuid
 import errno
 import shutil
 import logging
-import time
 
-from bd_storage.accessor.base import Accessor
+from bd_storage.accessor.base_accessor import Accessor
 
 this = sys.modules[__name__]
 this._log = logging.getLogger(__name__.replace('bd_storage', 'bd'))
@@ -14,15 +13,13 @@ this._log = logging.getLogger(__name__.replace('bd_storage', 'bd'))
 
 class FileSystemAccessor(Accessor):
 
-    def __init__(self, root):
+    def __init__(self, root=None):
         self._root = root
         if self._root:
             self._root = root.replace('\\', '/')
 
-    @classmethod
-    def new(cls, **kwargs):
-        root = kwargs.get("root")
-        return cls(root)
+    def root(self):
+        return self._root
 
     def resolve(self, uid):
         if not self._root:
@@ -66,7 +63,7 @@ class FileSystemAccessor(Accessor):
     def is_file(self, uid):
         return os.path.isfile(self.resolve(uid))
 
-    def list(self, uid, relative=True):
+    def list(self, uid, relative=True, recursive=True):
         paths = []
 
         initial_dir = self.resolve(uid).rstrip('/')
@@ -79,14 +76,24 @@ class FileSystemAccessor(Accessor):
                 dirname = root[start_index + 1:]
 
             paths.extend([self.join(dirname, x) for x in files])
+            if not recursive:
+                continue
 
         return paths
 
     def join(self, *args):
         return os.path.join(*args).replace('\\', '/')
 
-    def make_dir(self, uid):
-        os.mkdir(self.resolve(uid))
+    def make_dir(self, uid, recursive=False):
+        dirname = self.resolve(uid)
+        if recursive:
+            try:
+                os.makedirs(dirname)
+            except OSError as e:
+                if e.errno != errno.EEXIST:
+                    raise
+        else:
+            os.mkdir(dirname)
 
     def rm(self, uid):
         path = self.resolve(uid)
@@ -100,4 +107,4 @@ class FileSystemAccessor(Accessor):
 
 
 def register(registry):
-    registry.add_hook('storage.accessor.init.filesystem-accessor', FileSystemAccessor.new)
+    registry.add_hook('storage.accessor.init.filesystem-accessor', FileSystemAccessor)
