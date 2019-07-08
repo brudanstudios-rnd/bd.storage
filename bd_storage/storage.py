@@ -1,7 +1,6 @@
 import os
 import sys
 import uuid
-import logging
 import tempfile
 from fnmatch import fnmatch
 
@@ -12,9 +11,10 @@ import bd_storage
 
 from .formatter import StringFormatter
 from .schema import Schema
+from .logger import get_logger
 
 this = sys.modules[__name__]
-this._log = logging.getLogger(__name__.replace('bd_storage', 'bd'))
+this._log = get_logger(__name__)
 
 
 class Storage(object):

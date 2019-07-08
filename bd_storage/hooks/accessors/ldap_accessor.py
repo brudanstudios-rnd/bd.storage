@@ -1,14 +1,15 @@
 import os
 import sys
 import uuid
-import errno
-import logging
 import subprocess
 
-from bd_storage.accessor.base_accessor import Accessor
+from bd_storage.abstract.accessor import Accessor
+from bd.secrets import get_secret
+
+from bd_storage.logger import get_logger
 
 this = sys.modules[__name__]
-this._log = logging.getLogger(__name__.replace('bd_storage', 'bd'))
+this._log = get_logger(__name__)
 
 
 class LDAPAccessor(Accessor):
@@ -99,8 +100,8 @@ class LDAPAccessor(Accessor):
 
     def _execute(self, command):
         cmd = 'echo {password} | su {username} -c "{command}"'.format(
-            password='medusa',
-            username='medusa',
+            password=get_secret()['LDAP_LOGIN'],
+            username=get_secret()['LDAP_PASSWORD'],
             command=command
         )
         p = subprocess.Popen(

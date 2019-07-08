@@ -3,12 +3,12 @@ import sys
 import uuid
 import errno
 import shutil
-import logging
 
-from bd_storage.accessor.base_accessor import Accessor
+from bd_storage.abstract.accessor import Accessor
+from bd_storage.logger import get_logger
 
 this = sys.modules[__name__]
-this._log = logging.getLogger(__name__.replace('bd_storage', 'bd'))
+this._log = get_logger(__name__)
 
 
 class FileSystemAccessor(Accessor):

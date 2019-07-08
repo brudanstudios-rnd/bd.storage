@@ -1,14 +1,13 @@
 import os
 import sys
-import logging
-from fnmatch import fnmatch
 
 import metayaml
 
 from . import constants as c
+from ..logger import get_logger
 
 this = sys.modules[__name__]
-this._log = logging.getLogger(__name__.replace('bd_storage', 'bd'))
+this._log = get_logger(__name__)
 
 
 class SchemaItem(object):

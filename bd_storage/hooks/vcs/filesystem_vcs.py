@@ -1,11 +1,13 @@
 import sys
-import logging
+
+from bd_storage.abstract.vcs import VCS
+from bd_storage.logger import get_logger
 
 this = sys.modules[__name__]
-this._log = logging.getLogger(__name__.replace('bd_storage', 'bd'))
+this._log = get_logger(__name__)
 
 
-class FilesystemVersionControl(object):
+class FilesystemVersionControl(VCS):
 
     def is_centralized(self):
         return False

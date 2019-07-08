@@ -11,10 +11,10 @@ from .item import \
     SchemaDir, \
     SchemaAnchor, \
     SchemaFile
-
+from ..logger import get_logger
 
 this = sys.modules[__name__]
-this._log = logging.getLogger(__name__.replace('bd_storage', 'bd'))
+this._log = get_logger(__name__)
 
 
 class Schema(object):
