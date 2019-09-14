@@ -30,7 +30,7 @@ class FTPAccessor(Accessor):
         self._ftp.debug(0)
         self._ftp.set_pasv(True)
 
-        self._ftp.connect(get_secret()['FTP_IP'])
+        self._ftp.connect(get_secret()['FTP_HOST'])
         self._ftp.login(
             get_secret()['FTP_LOGIN'],
             get_secret()['FTP_PASSWORD'],
@@ -78,7 +78,7 @@ class FTPAccessor(Accessor):
         if not self.exists(uid):
             return False
 
-        return not self.is_dir()
+        return not self.is_dir(uid)
 
     def _traverse(self):
         data = []
