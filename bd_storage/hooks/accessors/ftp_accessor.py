@@ -3,7 +3,10 @@ import sys
 import uuid
 import socket
 import ftplib
-import StringIO
+try:
+    import StringIO
+except ImportError:
+    from io import StringIO
 
 from bd_storage.abstract.accessor import Accessor
 from bd.secrets import get_secret
