@@ -5,15 +5,11 @@ __pycache__/
 *$py.class
 
 # Eclipse / PyDev projects
-.project
-.pydevproject
-.settings/
-.idea/
+.*/
+!.gitignore
 
 venv*/
 dist/
 build/
 *.egg-info/
-.tox/
-.pytest_cache/
 *.spec

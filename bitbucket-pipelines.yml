@@ -1,12 +1,8 @@
-image: python:3.7.2
+image: geosam/bitbucket-aws-deploy:latest
 pipelines:
   tags:
     'v*.*.*':
       - step:
           name: deploy a package
           script:
-              - apt-get update && apt-get install -y zip
-              - zip -r --exclude=*.git* --exclude=bitbucket-pipelines.yml code.zip .
-              - pip install awscli
-              - metadata=$( base64 -w 0 artifact.json )
-              - aws s3 cp ./code.zip s3://$S3_DEPLOY_BUCKET/artifacts/$BITBUCKET_REPO_SLUG/$BITBUCKET_TAG.zip --metadata artifact=$metadata
+            - artifact-deploy package --region-name=${AWS_REGION}
