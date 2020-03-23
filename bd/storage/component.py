@@ -4,6 +4,8 @@ import logging
 
 from bd.api import Session
 
+from .storage import MetaItem, StoragePool
+
 from . import queries
 from . import utils
 
@@ -59,6 +61,7 @@ class Revision(object):
             self.comment
         )
 
+
 class Release(object):
 
     def __init__(self, **release_data):
@@ -67,7 +70,9 @@ class Release(object):
         for key, val in release_data.items():
             if key == 'revisions':
                 for revision_data in val:
-                    self.revisions.append(Revision(**revision_data))
+                    revision = Revision(**revision_data)
+                    revision.release = self
+                    self.revisions.append(revision)
             else:
                 setattr(self, key, val)
 
@@ -214,7 +219,25 @@ class Component(object):
         else:
             release.publish(comment)
 
-    def checkout(self, force=False):
+    def get_last_release(self, published=False):
+        if published:
+            for release in self.releases:
+                if release.published:
+                    return release
+        else:
+            return self.releases[0] if self.releases else None
+
+    def get_last_revision(self, published=False):
+        if published:
+            for release in self.releases:
+                for revision in release.revisions:
+                    if revision.published:
+                        return revision
+        else:
+            last_release = self.releases[0] if self.releases else None
+            return last_release.revisions[0]
+
+    def checkout(self, force_ownership=False):
 
         last_release = self.releases[0] if self.releases else None
 
@@ -230,7 +253,7 @@ class Component(object):
                 if last_revision.user['id'] == current_user['id']:
                     return
 
-                if not force:
+                if not force_ownership:
                     raise Exception(
                         'The item is already checked out by "{}". '
                         'Please contact this person to resolve.'.format(
@@ -252,8 +275,8 @@ class Component(object):
                     if published_only and not revision.published:
                         continue
                     
-                    version_data['__release__'] = release.version
-                    version_data['__revision__'] = revision.version
+                    version_data['_release_'] = release.version
+                    version_data['_revision_'] = revision.version
                     
                     return version_data
         else:
@@ -269,8 +292,8 @@ class Component(object):
             if not release:
                 raise Exception('The component has never been released')
 
-            version_data['__release__'] = release.version
-            version_data['__revision__'] = release.revisions[0].version
+            version_data['_release_'] = release.version
+            version_data['_revision_'] = release.revisions[0].version
         
             return version_data
 
@@ -319,3 +342,4 @@ class Component(object):
             repr(self.tags),
             repr(self.fields)
         )
+

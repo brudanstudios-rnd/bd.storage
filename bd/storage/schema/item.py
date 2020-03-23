@@ -2,11 +2,9 @@ import os
 import sys
 import re
 import logging
+import posixpath as pp
 
 from .._vendor import metayaml
-
-from . import constants as c
-from .. import utils
 
 this = sys.modules[__name__]
 this._log = logging.getLogger(__name__)
@@ -16,19 +14,6 @@ class SchemaItem(object):
 
     _cached_items = {}
 
-    def __init__(self, path):
-        self._path = path
-
-        self._children = []
-
-        self._template = None
-        self._config = None
-
-        self._triggers = None
-
-        if self and self.parent is not None:
-            self.parent.children.append(self)
-
     @classmethod
     def create(cls, path):
         schema_item = cls._cached_items.get(path)
@@ -37,105 +22,73 @@ class SchemaItem(object):
             cls._cached_items[path] = schema_item
         return schema_item
 
-    @property
-    def path(self):
-        return self._path
+    @classmethod
+    def clear(cls):
+        cls._cached_items.clear()
 
-    @property
-    def parent(self):
-        return self._cached_items.get(self._path.parent)
+    def __init__(self, path):
+        self._path = path
 
-    @property
-    def children(self):
-        return self._children
+        self._children = []
 
-    @property
-    def config(self):
-        if self._config is None:
+        self._cached_template = None
+        self._cached_config = None
 
-            self._config = {}
+        self._parent = self._cached_items.get(
+            os.path.dirname(self._path)
+        )
+
+        if self and self._parent is not None:
+            self._parent.add_child(self)
+
+    def add_child(self, item):
+        self._children.append(item)
+
+    def get_config(self, key, default=None):
+        if self._cached_config is None:
+
+            self._cached_config = {}
 
             cfg_path = self._path
-            if self._path.suffix != '.yml':
-                cfg_path = self._path.with_suffix('.yml')
+            if not self._path.endswith('.yml'):
+                cfg_path = self._path + '.yml'
 
-            if cfg_path.exists():
-                self._config = metayaml.read(
-                    str(cfg_path.resolve()),
+            if os.path.exists(cfg_path):
+                self._cached_config = metayaml.read(
+                    cfg_path,
                     defaults={'env': os.getenv}
                 )
 
-        return self._config
+        if not self._cached_config:
+            return default
 
-    @property
-    def triggers(self):
-        if self._triggers:
-            return self._triggers
+        return self._cached_config.get(key, default)
 
-        self._triggers = self.config.get('triggers', [])
+    def _get_basename(self):
+        basename = os.path.basename(self._path)
 
-        if self.parent is not None:
+        config_template = self.get_config('template')
+        if config_template:
+            basename = re.subn(r'[\:\!]\w+}', '}', config_template)[0]
 
-            self._triggers.extend([
-                trigger
-                for trigger in self.parent.triggers
-                if trigger.get('propagate', False)
-            ])
-
-        return self._triggers
-
-    def is_triggered(self, tags, fields, storage_type):
-        if not self.triggers:
-            return False
-
-        for trigger in self.triggers:
-            
-            supported_storage_types = trigger.get('storage_types')
-            if supported_storage_types and storage_type not in supported_storage_types:
-                continue
-            
-            tag_mask = trigger.get('tag_mask')
-            if not tag_mask:
-                continue
-
-            if utils.match_tags(tag_mask, tags):
-                return True
-
-        return False
-
-    @property
-    def basename(self):
-        basename = self._path.name
-        if self.config:
-            config_format = self.config.get('format')
-            if config_format:
-                basename = re.subn(r'[\:\!]\w+}', '}', config_format)[0]
         return basename
 
     @property
     def template(self):
-        if self._template is not None:
-            return self._template
+        if self._cached_template is not None:
+            return self._cached_template
 
-        basename = self.basename
-        parent_item = self.parent
+        basename = self._get_basename()
+        parent_item = self._parent
 
         # if it's the root of the schema
         if parent_item is None:
-            self._template = basename
+            self._cached_template = basename
         else:
             parent_template = parent_item.template
-            self._template = '/'.join([parent_template, basename])
+            self._cached_template = pp.join(parent_template, basename)
 
-        return self._template
-
-    @classmethod
-    def items(cls):
-        return cls._cached_items.values()
-
-    @classmethod
-    def clear(cls):
-        cls._cached_items.clear()
+        return self._cached_template
 
     def __str__(self):
         return "{}('{}')".format(self.__class__.__name__, self.template)
@@ -143,22 +96,12 @@ class SchemaItem(object):
     def __repr__(self):
         return str(self)
 
-    def __cmp__(self, other):
-        self_keys = set(c.template_key_regex.findall(self.template))
-        other_keys = set(c.template_key_regex.findall(other.template))
-        return (lambda a, b: (a > b)-(a < b))(len(self_keys), len(other_keys))
-
 
 class SchemaDir(SchemaItem):
     pass
 
 
-class SchemaFile(SchemaItem):
-    pass
-
-
 class SchemaAnchor(SchemaItem):
 
-    @property
-    def basename(self):
-        return self.config.get('format', '')
+    def _get_basename(self):
+        return self.get_config('template', '')

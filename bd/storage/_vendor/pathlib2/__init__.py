@@ -10,7 +10,7 @@ import ntpath
 import os
 import posixpath
 import re
-import six
+from bd.storage._vendor import six
 import sys
 
 from errno import EINVAL, ENOENT, ENOTDIR, EBADF

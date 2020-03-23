@@ -25,8 +25,8 @@ class FTPAccessor(Accessor):
             username=None,
             password=None,
             timeout=None,
-            write_mode=775
-        ):
+            write_mode=775):
+
         super(FTPAccessor, self).__init__(root)
 
         self._host = host

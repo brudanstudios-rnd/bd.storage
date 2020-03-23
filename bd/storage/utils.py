@@ -2,15 +2,6 @@ import re
 import hashlib
 
 
-class abstractclassmethod(classmethod):
-
-    __isabstractmethod__ = True
-
-    def __init__(self, callable):
-        callable.__isabstractmethod__ = True
-        super(abstractclassmethod, self).__init__(callable)
-
-
 def create_id(tags, fields):
     return hashlib.md5(
         str(
@@ -20,10 +11,11 @@ def create_id(tags, fields):
 
 
 def remove_extra_fields(fields):
-    return dict(filter(lambda x: not x[0].startswith('__'), fields.items()))
+    return dict(filter(lambda x: not x[0].startswith('_'), fields.items()))
+
 
 def remove_extra_tags(tags):
-    return list(filter(lambda tag: not tag.startswith('__'), tags))
+    return list(filter(lambda tag: not tag.startswith('_'), tags))
 
 
 def parse_mask(mask):
