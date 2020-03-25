@@ -93,17 +93,6 @@ class VCS(object):
             max_revision_version
         )
 
-    def create_item(self, tags, fields, **kwargs):
-        component = Component.create(tags, fields, kwargs or None)
-
-        meta_item = self.build_item_from_component(component)
-
-        return self._pool.load_item(
-            meta_item,
-            existing_only=False,
-            pull=False
-        )
-
     def publish(self, item, as_revision=True, comment=None):
 
         component = item.component
@@ -171,7 +160,7 @@ class VCS(object):
         return target_item
 
     def load(self, vcs_entity):
-
+        pass
 
     # def load_release(self, tags, fields, latest=False):
 
