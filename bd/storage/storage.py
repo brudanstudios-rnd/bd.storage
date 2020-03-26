@@ -444,7 +444,7 @@ class StoragePool(object):
             if item:
                 return item
 
-    def load_item(self, item, existing_only=True, pull=True):
+    def load_item(self, item, existing_only=True, download=True):
         
         storages = self._get_matching_storages(item.tags)
 
@@ -456,7 +456,7 @@ class StoragePool(object):
             
             _item.component = item.component
 
-            if not pull:
+            if not download:
                 return _item
 
             return self.save_item(_item, operation_mode=OperationMode.LOAD)

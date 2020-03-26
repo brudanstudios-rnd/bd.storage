@@ -2,6 +2,7 @@ import sys
 import logging
 
 from bd.api import Session
+import bd.api.errors as err
 
 from . import utils
 from .component import Component
@@ -17,7 +18,7 @@ class VCS(object):
     def __init__(self, storage_pool):
         self._pool = storage_pool
 
-    def create(self, tags, fields, metadata=None):
+    def create_component(self, tags, fields, metadata=None):
 
         tags = utils.remove_extra_tags(tags)
         fields = utils.remove_extra_fields(fields)
@@ -28,77 +29,53 @@ class VCS(object):
             queries.CREATE_COMPONENT_MUTATION,
             {"id": component_id, "tags": tags, "fields": fields, "metadata": metadata}
         )
-        if not data['createComponents']:
-            return
 
         component_data = data['createComponents']['returning'][0]
 
-        component = Component(**component_data)
-        revision = component.get_last_revision()
+        return Component(**component_data)
+
+    def get_item_from_component(self, component, as_revision=True, as_published=False):
 
         meta_item = MetaItem(component.tags, component.fields)
-        meta_item.set_userdata('_revision_', revision)
+        meta_item.set_userdata('_component_', component)
 
-        meta_item.add_tags('_publish_', '_revision_')
+        meta_item.add_tags(
+            '_publish_' if as_published else '_checkout_',
+            '_revision_' if as_revision else '_release_'
+        )
         meta_item.set_fields({
-            '_release_': revision.release.version,
-            '_revision_': revision.version
+            '_release_': component.current_release.version,
+            '_revision_': component.current_revision.version
         })
 
         return self._pool.load_item(
             meta_item,
             existing_only=False,
-            pull=False
+            download=False
         )
 
-    def get_component(cls,
-                      component_id,
-                      num_releases=1,
-                      num_revisions=1,
-                      max_release_version=None,
-                      max_revision_version=None):
-
-        data = Session().execute(
-            queries.FIND_COMPONENT_QUERY,
-            {
-                "id": component_id,
-                "num_releases": num_releases,
-                "num_revisions": num_revisions,
-                "max_release_version": max_release_version,
-                "max_revision_version": max_revision_version
-            }
-        )
-
+    def _get_component_by_id(self, component_id):
+        data = Session().execute(queries.FIND_COMPONENT_QUERY, {"id": component_id})
         if data['getComponent']:
             component_data = data['getComponent']
-            return cls(**component_data)
+            return Component(**component_data)
 
-    def find_one(cls,
-                 tags, fields,
-                 num_releases=1,
-                 num_revisions=1,
-                 max_release_version=None,
-                 max_revision_version=None):
-
-        tags = utils.remove_extra_tags(tags)
-        fields = utils.remove_extra_fields(fields)
-
-        component_id = utils.create_id(tags, fields)
-
-        return cls.get_component(
-            component_id,
-            num_releases,
-            num_revisions,
-            max_release_version,
-            max_revision_version
-        )
+    # def find_entity(self, tags, fields):
+    #
+    #     tags = utils.remove_extra_tags(tags)
+    #     fields = utils.remove_extra_fields(fields)
+    #
+    #     component = self._get_component_by_id(
+    #         utils.create_id(tags, fields)
+    #     )
+    #     if release
 
     def publish(self, item, as_revision=True, comment=None):
 
-        component = item.component
+        component = item.get_userdata('_component_')
         if not component:
             raise Exception(
-                'Unable to find any component in "{}"'.format(item)
+                'Unable to extract component from "{}"'.format(item)
             )
 
         if not as_revision:
@@ -125,13 +102,16 @@ class VCS(object):
         if not target_item:
             raise Exception('Unable to save item "{}"'.format(meta_item))
 
-        component.publish(as_revision, comment)
+        if as_revision:
+            component.get_release().get_revision().publish(comment)
+        else:
+            component.get_release().publish(comment)
 
         return target_item
 
     def checkout(self, item, force_ownership=False):
-
-        component = item.component
+        tags, fields = item.common_tags, item.common_fields
+        component = item.get_userdata('_component_')
         if not component:
             raise Exception(
                 'Unable to find any component in "{}"'.format(item)
