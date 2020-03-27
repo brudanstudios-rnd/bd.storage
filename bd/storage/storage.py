@@ -8,12 +8,10 @@ import tempfile
 import getpass
 import json
 import datetime
-from fnmatch import fnmatch
 
 import bd.hooks as bd_hooks
 # import bd.context as bd_context
 
-from .component import Component
 from .accessor import FileSystemAccessor
 from .formatter import FieldFormatter
 from .schema import Schema
@@ -29,12 +27,8 @@ def _json_encoder(obj):
     raise TypeError("Type {} not serializable".format(type(obj)))
 
 
-class OperationMode:
-    LOAD, SAVE = range(2)
-
-
-class StorageType:
-    PUBLISH, CHECKOUT, REMOTE = ('publish', 'checkout', 'remote')
+class TraverseDirection:
+    DOWNSTREAM, UPSTREAM = range(2)
 
 
 class Storage(object):
@@ -153,7 +147,6 @@ class BaseItem(object):
     def __init__(self, tags, fields):
         self.tags = tags[:]
         self.fields = fields.copy()
-        self.is_sequence = '_index_' in fields
         self._userdata = None
 
     @property
@@ -323,51 +316,37 @@ class StorageItem(BaseItem):
     def filename(self):
         return self.accessor.get_filename(self.uid)
 
-    def read(self, index=None):
-        if index is not None:
+    def read(self, direction=TraverseDirection.UPSTREAM):
 
-            fields = self.fields.copy()
-            fields['_index_'] = index
-
-            item = self.storage.get_item(self.tags, fields)
-            if item:
-
-                data = item.read()
-                if data is not None:
-                    return data
-
-                if self.next_item:
-                    return self.next_item.read(index)
-        else:
+        def _read_self():
             data = self.accessor.read(self.uid)
+            if data is not None:
+                this._log.debug('Read item data from storage "{}"'.format(self.storage.name))
+                return data
+
+        def _read_next():
+            if self.next_item:
+                return self.next_item.read(direction)
+
+        if direction == TraverseDirection.UPSTREAM:
+            data = _read_self()
             if data is not None:
                 return data
 
-            if self.next_item:
-                return self.next_item.read()
-
-    def write(self, data, index=None):
-        if index and not self.is_sequence:
-            this._log.error('Unable to write indexed data into non-sequenced item')
-            return False
-
-        if index is not None:
-
-            fields = self.fields.copy()
-            fields['_index_'] = index
-
-            item = self.storage.get_item(self.tags, fields)
-            if not item or not item.write(data):
-                return False
-
-            if self.next_item:
-                self.next_item.write(data, index)
-
-            return True
-
+            return _read_next()
         else:
-            if self.exists:
-                return False
+            data = _read_next()
+            if data is not None:
+                return data
+
+            return _read_self()
+
+    def write(self, data, overwrite=False, direction=TraverseDirection.UPSTREAM):
+        if not overwrite and self.exists:
+            return
+
+        def _write_self():
+            this._log.debug('Writing item data to storage "{}"...'.format(self.storage.name))
 
             self.accessor.write(self.uid, data)
 
@@ -376,7 +355,9 @@ class StorageItem(BaseItem):
                 if userdata:
                     aux_data = {
                         'date': datetime.datetime.now(),
-                        'user': getpass.getuser()
+                        'user': getpass.getuser(),
+                        'tags': self.tags,
+                        'fields': self.fields
                     }
                     userdata.update(aux_data)
 
@@ -385,21 +366,35 @@ class StorageItem(BaseItem):
                         json.dumps(userdata, indent=2, default=_json_encoder)
                     )
 
+            this._log.debug('Done')
+
+        def _write_next():
             if self.next_item:
-                self.next_item.write(data)
 
-            return True
+                if self._userdata:
+                    self.next_item.set_userdata_dict(self._userdata)
 
-    def make_dirs(self):
+                self.next_item.write(data, overwrite, direction)
+
+        if direction == TraverseDirection.UPSTREAM:
+            _write_self()
+            _write_next()
+        else:
+            _write_next()
+            _write_self()
+
+    def make_directories(self):
         self.accessor.make_dir(self.uid, True)
 
-    def push(self, data, index=None):
-        self.write(data, index)
+    def remove(self, recursive=True):
+        self.accessor.rm(self.uid)
+        if recursive and self.next_item:
+            self.next_item.remove(recursive)
 
-    def pull(self, index=None):
-        data = self.read(index)
+    def replicate(self, overwrite=False, direction=TraverseDirection.DOWNSTREAM):
+        data = self.read(direction)
         if data is not None:
-            self.write(data, index)
+            self.write(data, overwrite)
 
     def __str__(self):
         return self.__repr__()
@@ -445,7 +440,7 @@ class StoragePool(object):
                         storage_name, storage_config)
                 except Exception as e:
                     this._log.error(
-                        'Failed to create storage "{0}". {1}'.format(storage_name, str(e)))
+                        'Failed to create storage "{}". {}'.format(storage_name, str(e)))
                     continue
 
                 self._storages.append(storage)
@@ -479,19 +474,29 @@ class StoragePool(object):
 
         return storages
 
-    def _build_item_from_filename(self, filename):
+    def get_item_from_filename(self, filename):
         for storage in self._storages:
             item = storage.get_item_from_filename(filename)
             if item:
-                return item
+                return self.get_item(item.tags, item.fields)
 
     def get_item(self, tags, fields):
         last_item = None
         current_item = None
-        for storage in reversed(self._get_matching_storages(tags)):
+
+        storages = self._get_matching_storages(tags)
+        if not storages:
+            this._log.error('Storage matching {} tags not found'.format(tags))
+            return
+
+        for storage in reversed(storages):
 
             item = storage.get_item(tags, fields)
             if not item:
+                this._log.warning(
+                    'There is no item in the storage "{}" matching the specified '
+                    'combination of tags and fields: tags={}, fields={}'.format(storage.name, tags, fields)
+                )
                 continue
 
             current_item = item
@@ -503,85 +508,3 @@ class StoragePool(object):
             last_item = current_item
 
         return current_item
-
-    def load_item(self, item, existing_only=True, download=True):
-        
-        storages = self._get_matching_storages(item.tags)
-
-        for storage in storages:
-
-            _item = storage.get_item(item.tags, item.fields)
-            if not _item or (existing_only and not _item.exists):
-                continue
-
-            if not download:
-                return _item
-
-            return self.save_item(_item, operation_mode=OperationMode.LOAD)
-
-    def save_item(self,
-                  item,
-                  overwrite=False,
-                  operation_mode=OperationMode.SAVE):
-
-        is_meta = isinstance(item, MetaItem)
-
-        # item to return from this method,
-        # in most cases from local storage
-        return_item = None
-
-        # destination items are stored in the same order
-        # as storages
-        dest_items = []
-
-        stop_before = None
-        
-        if not is_meta and item.storage and operation_mode == OperationMode.LOAD:
-            stop_before = item.storage.name
-
-        storages = self._get_matching_storages(item.tags, stop_before)
-
-        for storage in reversed(storages):
-
-            dest_item = storage.get_item(item.tags, item.fields)
-            if not dest_item:
-                continue
-
-            # local storage has to be the last
-            return_item = dest_item
-
-            if dest_item.exists and not overwrite:
-                continue
-
-            storage.build_structure(item.tags, item.fields)
-
-            dest_items.append(dest_item)
-
-        if dest_items:
-
-            if item.is_sequence:
-
-                index = 1
-
-                while True:
-
-                    data = item.read(index)
-                    if data is None:
-                        break
-
-                    for dest_item in dest_items:
-                        dest_item.write(data, index)
-
-                    index += 1
-            else:
-                data = item.read()
-                for dest_item in dest_items:
-                    dest_item.write(data)
-
-        elif operation_mode == OperationMode.SAVE:
-            return return_item
-
-        if is_meta:
-            return return_item
-
-        return return_item or item
