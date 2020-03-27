@@ -312,53 +312,94 @@ class StorageItem(BaseItem):
         self.uid = uid
         self.storage = storage
         self.accessor = self.storage.accessor
-        self.filename = self.accessor.get_filename(self.uid)
-        self.exists = self.accessor.exists(self.uid)
+        self.next_item = None
+        self.prev_item = None
+
+    @property
+    def exists(self):
+        return self.accessor.exists(self.uid)
+
+    @property
+    def filename(self):
+        return self.accessor.get_filename(self.uid)
 
     def read(self, index=None):
         if index is not None:
 
-            self.fields['_index_'] = index
+            fields = self.fields.copy()
+            fields['_index_'] = index
 
-            item = self.storage.get_item(self.tags, self.fields)
+            item = self.storage.get_item(self.tags, fields)
             if item:
-                return item.read()
 
+                data = item.read()
+                if data is not None:
+                    return data
+
+                if self.next_item:
+                    return self.next_item.read(index)
         else:
-            return self.accessor.read(self.uid)
+            data = self.accessor.read(self.uid)
+            if data is not None:
+                return data
+
+            if self.next_item:
+                return self.next_item.read()
 
     def write(self, data, index=None):
+        if index and not self.is_sequence:
+            this._log.error('Unable to write indexed data into non-sequenced item')
+            return False
+
         if index is not None:
 
-            self.fields['_index_'] = index
+            fields = self.fields.copy()
+            fields['_index_'] = index
 
-            item = self.storage.get_item(self.tags, self.fields)
-            if item:
-                item.write(data)
+            item = self.storage.get_item(self.tags, fields)
+            if not item or not item.write(data):
+                return False
+
+            if self.next_item:
+                self.next_item.write(data, index)
+
+            return True
 
         else:
+            if self.exists:
+                return False
+
             self.accessor.write(self.uid, data)
 
-            if not self._userdata:
-                return
+            if self._userdata:
+                userdata = utils.remove_extra_fields(self._userdata)
+                if userdata:
+                    aux_data = {
+                        'date': datetime.datetime.now(),
+                        'user': getpass.getuser()
+                    }
+                    userdata.update(aux_data)
 
-            userdata = utils.remove_extra_fields(self._userdata)
-            if not userdata:
-                return
+                    self.accessor.write(
+                        self.uid + '.meta',
+                        json.dumps(userdata, indent=2, default=_json_encoder)
+                    )
 
-            aux_data = {
-                'date': datetime.datetime.now(),
-                'user': getpass.getuser()
-            }
-            userdata.update(aux_data)
+            if self.next_item:
+                self.next_item.write(data)
 
-            self.accessor.write(
-                self.uid + '.meta',
-                json.dumps(userdata, indent=2, default=_json_encoder)
-            )
+            return True
 
     def make_dirs(self):
         self.accessor.make_dir(self.uid, True)
+
+    def push(self, data, index=None):
+        self.write(data, index)
+
+    def pull(self, index=None):
+        data = self.read(index)
+        if data is not None:
+            self.write(data, index)
 
     def __str__(self):
         return self.__repr__()
@@ -444,6 +485,25 @@ class StoragePool(object):
             if item:
                 return item
 
+    def get_item(self, tags, fields):
+        last_item = None
+        current_item = None
+        for storage in reversed(self._get_matching_storages(tags)):
+
+            item = storage.get_item(tags, fields)
+            if not item:
+                continue
+
+            current_item = item
+
+            if last_item:
+                current_item.next_item = last_item
+                last_item.prev_item = current_item
+
+            last_item = current_item
+
+        return current_item
+
     def load_item(self, item, existing_only=True, download=True):
         
         storages = self._get_matching_storages(item.tags)
@@ -453,8 +513,6 @@ class StoragePool(object):
             _item = storage.get_item(item.tags, item.fields)
             if not _item or (existing_only and not _item.exists):
                 continue
-            
-            _item.component = item.component
 
             if not download:
                 return _item
@@ -488,8 +546,6 @@ class StoragePool(object):
             dest_item = storage.get_item(item.tags, item.fields)
             if not dest_item:
                 continue
-
-            dest_item.component = item.component
 
             # local storage has to be the last
             return_item = dest_item

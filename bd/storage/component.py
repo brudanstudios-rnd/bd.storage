@@ -13,6 +13,63 @@ this = sys.modules[__name__]
 this._log = logging.getLogger(__name__)
 
 
+def _checkout(revision, force_ownership):
+    component = revision.release.component
+
+    if not revision.published:
+        this._log.error(
+            'Component revision must be published in order to checkout: "{} / {} / {}"'.format(
+                component.id, revision.release.id, revision.id
+            )
+        )
+        return
+
+    meta_item = MetaItem(component.tags, component.fields)
+    meta_item.add_tags('_publish_', '_revision_')
+    meta_item.set_fields({
+        '_release_': revision.release.version,
+        '_revision_': revision.version
+    })
+
+    source_item = component.pool.load_item(meta_item)
+    if not source_item:
+        this._log.error('Unable to load storage item from {}'.format(meta_item))
+        return
+
+    latest_release = component.get_release()
+
+    if latest_release.published:
+        latest_release = component.create_release()
+        latest_revision = latest_release.get_revision()
+    else:
+        latest_revision = latest_release.get_revision()
+
+        if latest_revision.published:
+            latest_release.create_revision()
+        else:
+            current_user = Session().current_user()
+
+            if latest_revision.user['id'] != current_user['id']:
+                if not force_ownership:
+                    this._log.error(
+                        'Revision is already checked out by "{}". '
+                        'Please contact that person to resolve.'.format(
+                            latest_revision.user['email']
+                        )
+                    )
+                    return
+
+                latest_revision.change_ownership(current_user)
+
+    source_item.replace_tag('_publish_', '_checkout_')
+    source_item.set_fields({
+        '_release_': latest_release.version,
+        '_revision_': latest_revision.version
+    })
+
+    return component.pool.save_item(source_item)
+
+
 class Revision(object):
     
     def __init__(self, **revision_data):
@@ -71,6 +128,25 @@ class Revision(object):
 
         return component.pool.save_item(source_item)
 
+    def load_storage_item(self):
+        component = self.release.component
+        if not self.published:
+            this._log.error(
+                'Unable to load unpublished revision item: "{} / {} / {}"'.format(
+                    component.id, self.release.id, self.id
+                )
+            )
+            return
+
+        meta_item = MetaItem(component.tags, component.fields)
+        meta_item.add_tags('_publish_', '_revision_')
+        meta_item.set_fields({
+            '_release_': self.release.version,
+            '_revision_': self.version
+        })
+
+        return component.pool.load_item(meta_item)
+
     def to_dict(self):
         d = {}
         for attr_name, attr_value in self.__dict__.items():
@@ -126,11 +202,11 @@ class Release(object):
             self.revisions.insert(0, revision)
             return revision
 
-    def get_revision(self, published=False, version=None):
-        if version:
+    def get_revision(self, published=None, version=None):
+        if version is not None:
             return next((r for r in self.revisions if r.version == version), None)
-        if published:
-            return next((r for r in self.revisions if r.published), None)
+        if published is not None:
+            return next((r for r in self.revisions if r.published == published), None)
         return self.revisions[0]
 
     def publish(self, comment=None):
@@ -156,6 +232,24 @@ class Release(object):
             return
 
         return revision.checkout(force_ownership)
+
+    def load_storage_item(self):
+        component = self.component
+        if not self.published:
+            this._log.error(
+                'Unable to load unpublished release item: "{} / {}"'.format(
+                    component.id, self.id
+                )
+            )
+            return
+
+        meta_item = MetaItem(component.tags, component.fields)
+        meta_item.add_tags('_publish_', '_release_')
+        meta_item.set_fields({
+            '_release_': self.version
+        })
+
+        return component.pool.load_item(meta_item)
 
     # def to_dict(self):
     #     d = {}
@@ -250,11 +344,11 @@ class Component(object):
         self._current_release = None
         self._current_revision = None
 
-    def get_release(self, published=False, version=None):
-        if version:
+    def get_release(self, published=None, version=None):
+        if version is not None:
             return next((r for r in self.releases if r.version == version), None)
-        if published:
-            return next((r for r in self.releases if r.published), None)
+        if published is not None:
+            return next((r for r in self.releases if r.published == published), None)
         return self.releases[0]
 
     @property
@@ -277,14 +371,16 @@ class Component(object):
     @current_revision.setter
     def current_revision(self, revision):
         self._current_revision = revision
-        self._current_release = self._current_revision.release
+        if revision:
+            self._current_release = revision.release
 
     def checkout(self, force_ownership=False):
-
         release = self.get_release()
-
+        release.checkout(force_ownership)
         if release.published:
-            self._create_release()
+            revision = release.get_revision()
+            return revision.checkout(force_ownership)
+            self.create_release()
         else:
             revision = release.get_revision()
             
@@ -358,7 +454,7 @@ class Component(object):
     #
     #     return d
         
-    def _create_release(self):
+    def create_release(self):
         session = Session()
 
         data = session.execute(
