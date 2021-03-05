@@ -1,10 +1,14 @@
-import re
+import sys
 import string
 import logging
 
-from ._vendor.parse import parse
+from ._vendor import parse
+from ._vendor.six import reraise
+from .errors import *
 
 log = logging.getLogger(__name__)
+
+parse.log.setLevel(logging.ERROR)
 
 _formatter = string.Formatter()
 _type_conversions = {
@@ -24,8 +28,11 @@ class FieldFormatter(object):
         self._parser_spec_mapping = {}
         self._format_spec_mapping = {}
         self._type_spec_mapping = {}
+        self._defaults_spec_mapping = {}
 
         self._custom_type_parsers = {}
+
+        self._ensure_extra_fields(field_formatting_config)
 
         for field_name, field_data in field_formatting_config.items():
             
@@ -56,9 +63,10 @@ class FieldFormatter(object):
             )
         except KeyError as e:
             pass
-
+        except:
+            reraise(ParsingError, *sys.exc_info()[1:])
         else:
-            result = parse(typed_format, input_str, self._custom_type_parsers, case_sensitive=True)
+            result = parse.parse(typed_format, input_str, self._custom_type_parsers, case_sensitive=True)
             if not result:
                 return
 
@@ -68,17 +76,40 @@ class FieldFormatter(object):
 
             return fields
 
-    def format(self, format_str, **fields):
+    def format(self, template, **fields):
         self._ensure_typed(fields)
 
         typed_format = _formatter.vformat(
-            format_str, (), self.SafeDict(**self._format_spec_mapping)
+            template, (), self.SafeDict(**self._format_spec_mapping)
         )
 
         try:
             return _formatter.format(typed_format, **fields)
         except KeyError as e:
-            log.error('Formatting failed due to missing field: {}'.format(str(e)))
+            raise FormattingError(
+                'Unable to format template "{}" due to '
+                'missing field: {}'.format(template, str(e))
+            )
+        except:
+            reraise(FormattingError, *sys.exc_info()[1:])
+
+    def _ensure_extra_fields(self, field_formatting_config):
+        if '_index_' not in field_formatting_config:
+            field_formatting_config['_index_'] = {
+                'regex': r'\d{4}',
+                'type': 'int',
+                'format': '04d'
+            }
+        if '_version_' not in field_formatting_config:
+            field_formatting_config['_version_'] = {
+                'regex': r'\d{3}',
+                'type': 'int',
+                'format': '03d'
+            }
+        if '_suffix_' not in field_formatting_config:
+            field_formatting_config['_suffix_'] = {
+                'regex': r'[\.\-\w\d/\\]+'
+            }
 
     def _ensure_typed(self, fields):
         for field, value in fields.items():

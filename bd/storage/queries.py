@@ -1,86 +1,23 @@
 CREATE_COMPONENT_MUTATION = '''
 mutation CreateComponent($id: String!, $tags: jsonb!, $fields: jsonb!, $metadata: jsonb) {
-    createComponents(
-        objects: {
+    createComponent(
+        object: {
             id: $id, 
             tags: $tags, 
             fields: $fields, 
-            metadata: $metadata, 
-            releases: {
+            metadata: $metadata,
+            revisions: {
                 data: {
-                    published: false, 
-                    revisions: {
-                        data: {
-                            published: false
-                        }
-                    }
+                    published: false
                 }
             }
         }
     ){
-        affected_rows
-        returning {
-            id
-            tags
-            fields
-            metadata
-            releases {
-                id
-                version
-                published
-                revisions {
-                    id
-                    version
-                    comment
-                    published
-                    user {
-                        id
-                        email
-                    }
-                }
-            }
-        }
-    }
-}
-'''
-
-CREATE_RELEASE_MUTATION = '''
-mutation CreateComponentRelease($component_id: String!) {
-    createComponentReleases(objects: {component_id: $component_id, revisions: {data: {published: false}}}){
-        returning {
-            id
-            version
-            published
-            revisions {
-                id
-                version
-                comment
-                published
-                user {
-                    id
-                    email
-                }
-            }
-        }
-    }
-}
-'''
-
-PUBLISH_RELEASE_MUTATION = '''
-mutation PublishRelease($release_id: Int!, $revision_id: Int!, $comment: String) {
-    updateComponentReleases(_set: {published: true}, where: {id: {_eq: $release_id}}) {
-        affected_rows
-    }
-    updateComponentRevisions(_set: {published: true, comment: $comment}, where: {id: {_eq: $revision_id}}) {
-        affected_rows
-    }
-}
-'''
-
-CREATE_REVISION_MUTATION = '''
-mutation CreateRevision($release_id: Int!) {
-    createComponentRevisions(objects: {release_id: $release_id}){
-        returning {
+        id
+        tags
+        fields
+        metadata
+        revisions {
             id
             version
             comment
@@ -94,26 +31,41 @@ mutation CreateRevision($release_id: Int!) {
 }
 '''
 
-CHANGE_REVISION_STATUS_MUTATION = '''
+CREATE_REVISION_MUTATION = '''
+mutation CreateRevision($component_id: String!) {
+    createComponentRevision(object: {component_id: $component_id}){
+        id
+        version
+        comment
+        published
+        user {
+            id
+            email
+        }
+    }
+}
+'''
+
+PUBLISH_REVISION_MUTATION = '''
 mutation ChangeRevisionStatus($revision_id: Int!, $comment: String) {
-    updateComponentRevisions(_set: {published: true, comment: $comment}, where: {id: {_eq: $revision_id}}) {
-        affected_rows
+    updateComponentRevision(_set: {published: true, comment: $comment}, pk_columns: {id: $revision_id}) {
+        id
     }
 }
 '''
 
 CHANGE_REVISION_OWNERSHIP_MUTATION = '''
 mutation ChangeRevisionOwnership($revision_id: Int!, $user_id: String) {
-    updateComponentRevisions(_set: {user_id: $user_id}, where: {id: {_eq: $revision_id}}) {
-        affected_rows
+    updateComponentRevision(_set: {user_id: $user_id}, pk_columns: {id: $revision_id}) {
+        id
     }
 }
 '''
 
 UPDATE_COMPONENT_META_MUTATION = '''
 mutation UpdateComponentMetadata($id: String!, $metadata: jsonb!) {
-    updateComponents(_set: {metadata: $metadata}, where: {id: {_eq: $id}}) {
-        affected_rows
+    updateComponent(_set: {metadata: $metadata}, pk_columns: {id: $id}) {
+        id
     }
 }
 '''
@@ -121,9 +73,7 @@ mutation UpdateComponentMetadata($id: String!, $metadata: jsonb!) {
 FIND_COMPONENT_QUERY = '''
 query FindComponent(
     $id: String!, 
-    $num_releases: Int, 
     $num_revisions: Int, 
-    $max_release_version: Int, 
     $max_revision_version: Int
 ) {
     getComponent(id: $id) {
@@ -131,31 +81,20 @@ query FindComponent(
         tags
         fields
         metadata
-        releases (
+        revisions (
             order_by: {id: desc}, 
-            limit: $num_releases, 
+            limit: $num_revisions,
             where: {
-                version: {_lte: $max_release_version}
+                version: {_lte: $max_revision_version}
             }
         ) {
             id
             version
+            comment
             published
-            revisions (
-                order_by: {id: desc}, 
-                limit: $num_revisions,
-                where: {
-                    version: {_lte: $max_revision_version}
-                }
-            ) {
+            user {
                 id
-                version
-                comment
-                published
-                user {
-                    id
-                    email
-                }
+                email
             }
         }
     }
@@ -163,25 +102,20 @@ query FindComponent(
 '''
 
 FIND_COMPONENTS_QUERY = '''
-query FindComponents($id_list: [String!]!, $num_releases: Int, $num_revisions: Int) {
+query FindComponents($id_list: [String!]!, $num_revisions: Int) {
     getComponents(where: {id: {_in: $id_list}}) {
         id
         tags
         fields
         metadata
-        releases (order_by: {id: desc}, limit: $num_releases) {
+        revisions (order_by: {id: desc}, limit: $num_revisions) {
             id
             version
+            comment
             published
-            revisions (order_by: {id: desc}, limit: $num_revisions) {
+            user {
                 id
-                version
-                comment
-                published
-                user {
-                    id
-                    email
-                }
+                email
             }
         }
     }

@@ -1,5 +1,7 @@
+import os
 import re
 import hashlib
+import posixpath
 
 
 def create_id(tags, fields):
@@ -66,3 +68,27 @@ def match_tags(mask, tags):
         return eval(' '.join(expression), None, None)
     except:
         return False
+
+
+class PathUtils(object):
+    
+    def walk(self, *args, **kwargs):
+        for root, dirnames, filenames in os.walk(*args, **kwargs):
+            yield root.replace('\\', '/'), dirnames, filenames
+
+    def _normpath(self, path):
+        if not path:
+            return path
+        return self.normpath(path)
+
+    def __getattr__(self, item):
+        if item in 'normpath':
+            return lambda path: os.path.normpath(path).replace('\\', '/')
+        elif item == 'join':
+            return lambda *args: posixpath.join(*list(map(self._normpath, args)))
+        elif item == 'dirname':
+            return lambda path: os.path.dirname(self.normpath(path))
+        return getattr(os.path, item)
+
+
+putils = PathUtils()

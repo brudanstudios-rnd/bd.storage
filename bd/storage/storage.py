@@ -1,24 +1,30 @@
-__all__ = ['StoragePool']
+__all__ = ['StoragePool', 'MetaItem']
 
 import os
+import re
 import sys
 import uuid
 import logging
 import tempfile
 import getpass
 import json
+import collections
 import datetime
 
 import bd.hooks as bd_hooks
-# import bd.context as bd_context
+
+from ._vendor.six import reraise
 
 from .accessor import FileSystemAccessor
 from .formatter import FieldFormatter
 from .schema import Schema
+from .validation import validate_pool_config
 from . import utils
+from .utils import putils
+from .errors import *
+from .enums import ItemType
 
-this = sys.modules[__name__]
-this._log = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 def _json_encoder(obj):
@@ -27,16 +33,14 @@ def _json_encoder(obj):
     raise TypeError("Type {} not serializable".format(type(obj)))
 
 
-class TraverseDirection:
-    DOWNSTREAM, UPSTREAM = range(2)
-
-
 class Storage(object):
 
-    def __init__(self, name, accessor, schema, tag_mask=None):
-        self.name = name
-        self.accessor = accessor
-        self.schema = schema
+    def __init__(self, name, accessor, schema, formatter, adapter=None, tag_mask=None):
+        self._name = name
+        self._accessor = accessor
+        self._schema = schema
+        self._formatter = formatter
+        self._adapter = adapter
         self._tag_mask = utils.parse_mask(tag_mask) if tag_mask else None
 
     @classmethod
@@ -52,79 +56,143 @@ class Storage(object):
 
         """
         accessor = cls._create_accessor(storage_config["accessor"])
+        formatter = cls._create_formatter(storage_config["fields"])
         schema = cls._create_schema(storage_config["schema"])
+        adapter = cls._create_adapter(storage_config.get('adapter'))
 
         return Storage(
             storage_name,
             accessor,
             schema,
+            formatter,
+            adapter,
             storage_config.get("tag_mask")
         )
 
     @classmethod
     def _create_accessor(cls, accessor_config):
-        accessor_name = accessor_config.get("name", "fs")
+        accessor_name = accessor_config.get("name")
         accessor_kwargs = accessor_config.get("kwargs", {})
-        
-        if accessor_name == 'fs':
+
+        if not accessor_name or accessor_name == 'fs':
             return FileSystemAccessor(**accessor_kwargs)
 
-        return bd_hooks.execute(accessor_name, **accessor_kwargs).one()
+        try:
+            return bd_hooks.execute(accessor_name, **accessor_kwargs).one()
+        except bd_hooks.HookError:
+            reraise(
+                AccessorCreationError,
+                'Failed to initialize accessor "{}"'.format(accessor_name),
+                sys.exc_info()[2]
+            )
 
     @classmethod
-    def _create_schema(cls, schema_config):
+    def _create_formatter(cls, fields_config):
+        return FieldFormatter(fields_config)
+
+    @classmethod
+    def _create_schema(cls, schema_name):
         """Create storage schema from provided configuration.
 
         Args:
-            accessor (Accessor): storage accessor object.   
-            schema_config (dict): schema configuration.
+            schema_name (str): storage schema name.
 
         Returns:
             Schema: storage schema object.
 
         """
-        dirname = schema_config['dir']
-        fields_config = schema_config['fields']
-        return Schema.create(
-            dirname,
-            FieldFormatter(fields_config)
-        )
 
-    def get_item(self, tags, fields):
+        if 'BD_STORAGE_SCHEMA_PATH' not in os.environ:
+            raise SchemaError(
+                'No schema search path defined. '
+                'Please ensure "BD_STORAGE_SCHEMA_PATH" environment variable is defined.'
+            )
+
+        schema_search_paths = os.environ['BD_STORAGE_SCHEMA_PATH'].split(os.pathsep)
+
+        schema_dir = None
+        for search_path in schema_search_paths:
+            dirname = os.path.join(search_path, schema_name)
+            if os.path.exists(dirname):
+                schema_dir = dirname
+                break
+
+        if not schema_dir:
+            raise SchemaError(
+                'Unable to find schema with name "{}"'.format(schema_name)
+            )
+
+        return Schema(putils.normpath(schema_dir))
+
+    @classmethod
+    def _create_adapter(cls, adapter_config):
+        if not adapter_config:
+            return
+
+        adapter_name = adapter_config.get("name")
+        adapter_kwargs = adapter_config.get("kwargs", {})
+
+        if adapter_name:
+            try:
+                return bd_hooks.execute(adapter_name, **adapter_kwargs).one()
+            except bd_hooks.HookError:
+                reraise(
+                    AdapterCreationError,
+                    'Failed to initialize adapter "{}"'.format(accessor_name),
+                    sys.exc_info()[2]
+                )
+
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def accessor(self):
+        return self._accessor
+
+    @property
+    def adapter(self):
+        return self._adapter
+
+    @property
+    def formatter(self):
+        return self._formatter
+
+    def get_item(self, tags):
         if not self.is_matching(tags):
             return
 
-        uid = self.schema.get_uid_from_data(tags, fields)
-        if not uid:
+        schema_item = self._schema.get_item(tags)
+        if not schema_item:
             return
 
-        return StorageItem(
-            tags,
-            fields,
-            uid=uid,
-            storage=self
-        )
+        return MetaItem(tags, schema_item, self)
 
-    def get_item_from_filename(self, filename):
-        uid = self.accessor.convert_filename_to_uid(filename)
-        if not uid:
-            return
+    def get_data_from_uid(self, uid):
+        max_num_fields = -1
+        result_tags = result_fields = None
+        for tags, item in self._schema.get_items().items():
 
-        result = self.schema.get_data_from_uid(uid)
-        if not result:
-            return
+            fields = self._formatter.parse(uid, item.template)
+            if not fields:
+                continue
 
-        tags, fields = result
+            num_fields = len(fields)
 
-        if not self.is_matching(tags):
-            return
+            if num_fields > max_num_fields:
+                result_tags, result_fields = tags, fields
+                max_num_fields = num_fields
 
-        return StorageItem(
-            tags,
-            fields,
-            uid=uid,
-            storage=self
-        )
+        if not (result_tags and result_fields):
+            return None, None
+
+        if not self.is_matching(result_tags):
+            return None, None
+
+        if self._adapter:
+            self._adapter.from_current(result_fields)
+
+        return result_tags, result_fields
 
     def is_matching(self, tags):
         if not self._tag_mask:
@@ -136,38 +204,79 @@ class Storage(object):
         return self.__repr__()
 
     def __repr__(self):
-        return "Storage(name='{}', accessor={})".format(
-            self.name,
-            self.accessor
-        )
+        return "Storage(name='{}')".format(self._name)
 
 
-class BaseItem(object):
+class MetadataEdit(object):
 
-    def __init__(self, tags, fields):
-        self.tags = tags[:]
-        self.fields = fields.copy()
-        self._userdata = None
+    def __init__(self):
+        self._metadata = None
+
+    def get_metadata(self, key):
+        if self._metadata:
+            return self._metadata.get(key)
+
+    def set_metadata(self, key, value):
+        if not self._metadata:
+            self._metadata = {key: value}
+        else:
+            self._metadata[key] = value
+
+    def get_metadata_dict(self):
+        return self._metadata
+
+    def set_metadata_dict(self, metadata):
+        if metadata is None:
+            self._metadata = None
+        else:
+            self._metadata = metadata.copy()
+
+    def copy_metadata(self, item):
+        metadata = item._metadata
+        if metadata is None:
+            self._metadata = None
+        else:
+            self._metadata = metadata.copy()
+
+
+class TagsMixin(object):
+
+    def __init__(self, tags):
+        if isinstance(tags, TagsMixin):
+            tags = tags.tags
+        elif tags and not isinstance(tags, (tuple, list, set, frozenset)):
+            raise InputError(
+                'Argument "tags" has invalid type "{}"'.format(type(tags).__name__)
+            )
+        self._tags = list(tags)
+
+    @property
+    def tags(self):
+        return self._tags
 
     @property
     def common_tags(self):
-        return [tag for tag in self.tags if not tag.startswith('_')]
+        return [tag for tag in self._tags if not tag.startswith('_')]
 
     @property
     def extra_tags(self):
-        return [tag for tag in self.tags if tag.startswith('_')]
+        return [tag for tag in self._tags if tag.startswith('_')]
 
-    @property
-    def common_fields(self):
-        return {name: value for name, value in self.fields.items() if not name.startswith('_')}
+    def __str__(self):
+        return self.__repr__()
 
-    @property
-    def extra_fields(self):
-        return {name: value for name, value in self.fields.items() if name.startswith('_')}
+    def __repr__(self):
+        return repr(self._tags)
+
+
+class TagsEdit(TagsMixin):
+
+    def remove_extra_tags(self):
+        self._tags = list(filter(lambda tag: not tag.startswith('_'), self._tags))
 
     def add_tag(self, tag):
-        if tag not in self.tags:
-            self.tags.append(tag)
+        if tag not in self._tags:
+            self._tags.append(tag)
         return self
 
     def add_tags(self, *tags):
@@ -177,7 +286,7 @@ class BaseItem(object):
 
     def remove_tag(self, tag):
         try:
-            self.tags.remove(tag)
+            self._tags.remove(tag)
         except ValueError:
             pass
         return self
@@ -195,206 +304,595 @@ class BaseItem(object):
             self.replace_tag(old_tag, new_tag)
         return self
 
-    def set_field(self, name, value):
-        self.fields[name] = value
+
+class FieldsMixin(object):
+
+    def __init__(self, fields=None):
+        if fields:
+            if isinstance(fields, FieldsMixin):
+                fields = fields.fields
+            elif not isinstance(fields, dict):
+                raise InputError(
+                    'Argument "fields" has invalid type "{}"'.format(type(fields).__name__)
+                )
+        self._fields = fields.copy() if fields else {}
+
+    @property
+    def fields(self):
+        return self._fields
+
+    @property
+    def common_fields(self):
+        return {name: value for name, value in self._fields.items() if not name.startswith('_')}
+
+    @property
+    def extra_fields(self):
+        return {name: value for name, value in self._fields.items() if name.startswith('_')}
+
+    def __str__(self):
+        return self.__repr__()
+
+    def __repr__(self):
+        return repr(self._fields)
+
+
+class FieldsEdit(FieldsMixin):
+
+    def remove_extra_fields(self):
+        self._fields = dict(filter(lambda x: not x[0].startswith('_'), self._fields.items()))
         return self
 
-    def set_fields(self, fields):
-        self.fields.update(fields)
+    def set_field(self, name, value):
+        self._fields[name] = value
+        return self
+
+    def update_fields(self, fields):
+        self._fields.update(fields)
+        return self
 
     def pop_field(self, name):
-        return self.fields.pop(name, None)
+        return self._fields.pop(name, None)
 
     def pop_fields(self, names):
         popped_fields = {}
         for name in names:
-            value = self.fields.pop(name, None)
+            value = self._fields.pop(name, None)
             if value:
                 popped_fields[name] = value
         return popped_fields
 
-    def get_userdata(self, key):
-        if self._userdata:
-            return self._userdata.get(key)
 
-    def set_userdata(self, key, value):
-        if not self._userdata:
-            self._userdata = {key: value}
-        else:
-            self._userdata[key] = value
+class ChainItemMixin(object):
 
-    def get_userdata_dict(self):
-        return self._userdata
+    def __init__(self):
+        self.next_item = None
+        self.prev_item = None
 
-    def set_userdata_dict(self, data):
-        self._userdata = data
+    def iter_chain(self, to_next=True):
+        item = self
+        while item:
+            yield item
+            item = item.next_item
+
+    def set_next_item(self, item):
+        self.next_item = item
+        item.prev_item = self
+
+    def set_prev_item(self, item):
+        self.prev_item = item
+        item.next_item = self
+
+    def get_upstream_item(self):
+        upstream_item = self
+        while upstream_item.next_item:
+            upstream_item = upstream_item.next_item
+        return upstream_item
+
+    def get_downstream_item(self):
+        downstream_item = self
+        while downstream_item.prev_item:
+            downstream_item = downstream_item.prev_item
+        return downstream_item
 
 
-class MetaItem(BaseItem):
+class MetaItem(TagsMixin, ChainItemMixin):
 
-    def __init__(self,
-                 tags,
-                 fields,
-                 filename=None):
-        
-        super(MetaItem, self).__init__(
-            utils.remove_extra_tags(tags),
-            utils.remove_extra_fields(fields)
-        )
-
-        self._is_temp = filename is None
-
-        if self._is_temp:
-            self._filename = os.path.join(
-                tempfile.gettempdir(), 
-                uuid.uuid4().hex
-            )
-        else:
-            self._filename = filename
-
-    @property
-    def filename(self):
-        return self._filename
-
-    @filename.setter
-    def filename(self, filename):
-        self._is_temp = False
-        self._filename = filename
+    def __init__(self, tags, schema_item, storage):
+        TagsMixin.__init__(self, tags)
+        ChainItemMixin.__init__(self)
+        self._type = schema_item.type
+        self._template = schema_item.template
+        self._storage = storage
+        self._adapter = storage.adapter
+        self._accessor = storage.accessor
+        self._formatter = storage.formatter
 
     @property
-    def exists(self):
-        return os.path.exists(self._filename)
+    def type(self):
+        return self._type
 
-    def read(self):
-        if not os.path.exists(self._filename):
-            return
+    @property
+    def template(self):
+        return self._template
 
-        with open(self._filename, 'rb') as f:
-            return f.read()
+    @property
+    def storage(self):
+        return self._storage
 
-    def write(self, data):
-        with open(self._filename, 'wb') as f:
-            f.write(data)
+    @property
+    def adapter(self):
+        return self._adapter
 
-    def __del__(self):
-        try:
-            if self._is_temp and os.path.exists(self._filename):
-                os.unlink(self._filename)
-        except:
-            this._log.exception(
-                'Unable to delete temporary file \'{}\''.format(self._filename)
+    @property
+    def accessor(self):
+        return self._storage.accessor
+
+    @property
+    def formatter(self):
+        return self._formatter
+
+    def get_storage_item(self, fields):
+        if isinstance(fields, FieldsEdit):
+            fields = fields.fields
+
+        target_storage_item = None
+        prev_storage_item = None
+
+        if self._type == ItemType.sequence:
+            if ItemSequenceFn.PRIMARY_FIELD not in fields:
+                fields[ItemSequenceFn.PRIMARY_FIELD] = 1
+
+        elif self._type == ItemType.collection:
+            if ItemCollectionFn.PRIMARY_FIELD not in fields:
+                fields[ItemCollectionFn.PRIMARY_FIELD] = ''
+
+        for meta_item in self.iter_chain():
+
+            curr_fields = fields
+            if meta_item._adapter:
+                curr_fields = meta_item._adapter.to_current(curr_fields.copy())
+
+            uid = meta_item._formatter.format(meta_item.template, **curr_fields)
+            if not uid:
+                continue
+
+            curr_storage_item = StorageItem(
+                uid,
+                curr_fields,
+                meta_item
             )
+
+            if target_storage_item is None:
+                target_storage_item = curr_storage_item
+            else:
+                curr_storage_item.set_prev_item(prev_storage_item)
+
+            prev_storage_item = curr_storage_item
+
+        return target_storage_item
+
+    def build_uid(self, fields):
+        if isinstance(fields, FieldsEdit):
+            fields = fields.fields
+
+        if self._adapter:
+            fields = self._adapter.to_current(fields.copy())
+
+        return self._formatter.format(self._template, **fields)
 
     def __str__(self):
         return self.__repr__()
 
     def __repr__(self):
         return (
-            "MetaItem(tags={}, fields={}, filename='{}')"
-        ).format(
-            repr(self.tags),
-            repr(self.fields),
-            self._filename
-        )
+            "MetaItem(tags={}, template='{}', storage='{}')"
+        ).format(self._tags, self._template, self.storage.name)
 
 
-class StorageItem(BaseItem):
+class UTBase(FieldsEdit):
 
-    def __init__(self, tags, fields, uid, storage):
-        super(StorageItem, self).__init__(tags, fields)
-        self.uid = uid
-        self.storage = storage
-        self.accessor = self.storage.accessor
-        self.next_item = None
-        self.prev_item = None
+    PRIMARY_FIELD = None
+
+    def __init__(self, item, fields=None):
+        if isinstance(item, StorageItem):
+            self._meta_item = item.meta_item
+            if not fields:
+                fields = item.fields
+        else:
+            self._meta_item = item
+            if not fields:
+                raise InputError(
+                    'Argument "fields" is mandatory when '
+                    'using MetaItem as the first argument.'
+                )
+
+        super(UTBase, self).__init__(fields)
 
     @property
-    def exists(self):
-        return self.accessor.exists(self.uid)
+    def meta_item(self):
+        return self._meta_item
+
+    def get_storage_item(self, primary_field_value=None):
+        fields = self.fields
+        if primary_field_value is not None:
+            fields = FieldsEdit(fields)
+            fields.set_field(self.PRIMARY_FIELD, primary_field_value)
+        return self._meta_item.get_storage_item(fields)
+
+    def load(self, load_metadata=False):
+        for member_item in self.get_items():
+            member_item.load(load_metadata)
+
+    def get_items(self):
+        pass
+
+
+class ItemRevisionFn(UTBase):
+
+    PRIMARY_FIELD = '_version_'
+
+    def get_items(self):
+        fields = FieldsEdit(self.fields)
+        fields.set_field(self.PRIMARY_FIELD, 96969696969696)      # adding just to detect it later
+
+        revision_numbers = set()
+
+        item = self._meta_item.get_upstream_item()
+        uid = item.build_uid(fields)
+        if not uid:
+            return []
+
+        uid_dirname, uid_basename = putils.split(uid)
+        uid_basename_pattern = re.escape(uid_basename).replace('96969696969696', '(\d+)')
+
+        try:
+            nested_uids = item.accessor.list(uid_dirname, recursive=False)
+        except:
+            reraise(AccessorError, *sys.exc_info()[1:])
+
+        for uid_basename in sorted(nested_uids):
+            match = re.match(uid_basename_pattern, uid_basename)
+            if match:
+                revision_numbers.add(int(match.group(1)))
+
+        revision_numbers = list(revision_numbers)
+        revision_numbers.sort()
+
+        members = []
+        for revision_number in revision_numbers:
+            member_item = self.get_storage_item(revision_number)
+            if member_item:
+                members.append(member_item)
+
+        return members
+
+
+class ItemSequenceFn(UTBase):
+
+    PRIMARY_FIELD = '_index_'
+
+    def get_items(self):
+        fields = FieldsEdit(self.fields)
+        fields.set_field(self.PRIMARY_FIELD, 96969696969696)      # adding just to detect it later
+
+        indexes = set()
+
+        item = self._meta_item.get_upstream_item()
+        uid = item.build_uid(fields)
+        if not uid:
+            return []
+
+        uid_dirname, uid_basename = putils.split(uid)
+        uid_basename_pattern = re.escape(uid_basename).replace('96969696969696', '(\d+)')
+
+        try:
+            nested_uids = item.accessor.list(uid_dirname, recursive=False)
+        except:
+            reraise(AccessorError, *sys.exc_info()[1:])
+
+        for uid_basename in sorted(nested_uids):
+            match = re.match(uid_basename_pattern, uid_basename)
+            if match:
+                indexes.add(int(match.group(1)))
+
+        indexes = list(indexes)
+        indexes.sort()
+
+        members = []
+        for index in indexes:
+            member_item = self.get_storage_item(index)
+            if member_item:
+                members.append(member_item)
+
+        return members
+
+
+class ItemCollectionFn(UTBase):
+
+    PRIMARY_FIELD = '_suffix_'
+
+    def get_items(self):
+        fields = FieldsEdit(self.fields)
+        fields.set_field(self.PRIMARY_FIELD, '')      # adding just to detect it later
+
+        item = self._meta_item.get_upstream_item()
+
+        uid = item.build_uid(fields)
+        if not uid:
+            return []
+
+        try:
+            relative_suffix_uids = item.accessor.list(uid)
+        except:
+            reraise(AccessorError, *sys.exc_info()[1:])
+
+        suffixes = set()
+        for relative_suffix_uid in relative_suffix_uids:
+            suffixes.add(relative_suffix_uid)
+
+        members = []
+        for suffix in suffixes:
+            members.append(self.get_storage_item(suffix))
+
+        return members
+
+    def load(self, load_metadata=False):
+        for member_item in self.get_items():
+            member_item.load(load_metadata)
+
+
+class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
+
+    def __init__(self, uid, fields, meta_item):
+        TagsMixin.__init__(self, meta_item.tags)
+        FieldsMixin.__init__(self, fields)
+        MetadataEdit.__init__(self)
+        ChainItemMixin.__init__(self)
+        self._uid = uid
+        self._meta_item = meta_item
 
     @property
-    def filename(self):
-        return self.accessor.get_filename(self.uid)
+    def uid(self):
+        return self._uid
 
-    def read(self, direction=TraverseDirection.UPSTREAM):
+    @property
+    def type(self):
+        return self._meta_item.type
+
+    @property
+    def storage(self):
+        return self._meta_item.storage
+
+    @property
+    def accessor(self):
+        return self._meta_item.accessor
+
+    @property
+    def meta_item(self):
+        return self._meta_item
+
+    def exists(self, check_upstream=False):
+        try:
+            exists = False
+            if self.accessor.exists(self._uid):
+                exists = True
+            elif check_upstream:
+                if self.next_item:
+                    exists = self.next_item.exists(check_upstream)
+            return exists
+        except:
+            reraise(
+                AccessorError,
+                'Failed to check if item "{}" exists. {}'.format(self, sys.exc_info()[1]),
+                sys.exc_info()[2]
+            )
+
+    def get_filesystem_path(self):
+        return self.accessor.get_filesystem_path(self._uid)
+
+    def read(self, current_item_only=False, upstream=True, load_metadata=False):
 
         def _read_self():
-            data = self.accessor.read(self.uid)
+            try:
+                data = self.accessor.read(self._uid)
+            except:
+                reraise(
+                    AccessorError,
+                    'Failed to read item "{}". '
+                    '{}'.format(self, sys.exc_info()[1]),
+                    sys.exc_info()[2]
+                )
+
             if data is not None:
-                this._log.debug('Read item data from storage "{}"'.format(self.storage.name))
-                return data
+                log.debug('Read item data from storage "{}"'.format(self.storage.name))
+
+            if load_metadata:
+                # if .txt or .meta file is found parse it
+                # and use the data as metadata
+                self.set_metadata_dict(self._load_metadata())
+
+            return data
 
         def _read_next():
             if self.next_item:
-                return self.next_item.read(direction)
+                data = self.next_item.read(upstream=upstream, load_metadata=load_metadata)
 
-        if direction == TraverseDirection.UPSTREAM:
-            data = _read_self()
-            if data is not None:
+                if load_metadata:
+                    # copy metadata from next item to current
+                    self.copy_metadata(self.next_item)
+
                 return data
 
-            return _read_next()
-        else:
-            data = _read_next()
-            if data is not None:
-                return data
-
+        if current_item_only:
             return _read_self()
 
-    def write(self, data, overwrite=False, direction=TraverseDirection.UPSTREAM):
-        if not overwrite and self.exists:
-            return
+        if upstream:
+            data = _read_self()
+            if data is None:
+                data = _read_next()
+            return data
+        else:
+            data = _read_next()
+            if data is None:
+                data = _read_self()
+            return data
+
+    def _dump_metadata(self):
+        aux_data = {
+            'date': datetime.datetime.now(),
+            'user': getpass.getuser(),
+            'tags': self.tags,
+            'fields': self.fields
+        }
+
+        if self._metadata:
+            metadata = utils.remove_extra_fields(self._metadata)
+            if metadata:
+                aux_data.update(metadata)
+
+        try:
+            json_data = json.dumps(aux_data, indent=2, default=_json_encoder)
+        except TypeError as e:
+            raise MetadataSerializationError(e)
+
+        try:
+            self.accessor.write(self._uid + '.meta', json_data)
+        except:
+            reraise(
+                AccessorError,
+                'Failed to write metadata for item "{}". '
+                '{}'.format(self, sys.exc_info()[1]),
+                sys.exc_info()[2]
+            )
+
+    def _load_metadata(self):
+        data = {}
+
+        metadata_uid = self._uid + '.meta'
+        if not self.accessor.exists(metadata_uid):
+            metadata_uid = self._uid + '.txt'
+            if not self.accessor.exists(metadata_uid):
+                return
+
+        content = self.accessor.read(metadata_uid)
+
+        if metadata_uid.endswith('.meta'):
+            data = json.loads(content)
+            data["date"] = datetime.datetime.strptime(data['date'], "%m/%d/%Y %H:%M:%S")
+            data.pop('tags', None)
+            data.pop('fields', None)
+        else:
+            active_section = None
+            for line in content.splitlines():
+                line = line.strip()
+
+                if not len(line):
+                    continue
+
+                try:
+                    title, text = line.split(":", 1)
+                except ValueError:
+                    data[active_section] = '\n'.join([data[active_section], line])
+                    continue
+
+                if text:
+                    text = text.strip()
+
+                if title == "date":
+                    data["date"] = datetime.datetime.strptime(text, "%m/%d/%Y %H:%M:%S")
+                    active_section = "date"
+                elif title == "user":
+                    data["user"] = text
+                    active_section = "user"
+                elif title == "note":
+                    data["comment"] = text
+                    active_section = "comment"
+                else:
+                    data[title] = text
+                    active_section = title
+        return data
+
+    def write(self, data, current_item_only=False, upstream=True, dump_metadata=False):
 
         def _write_self():
-            this._log.debug('Writing item data to storage "{}"...'.format(self.storage.name))
 
-            self.accessor.write(self.uid, data)
+            if self.exists():
+                return
 
-            if self._userdata:
-                userdata = utils.remove_extra_fields(self._userdata)
-                if userdata:
-                    aux_data = {
-                        'date': datetime.datetime.now(),
-                        'user': getpass.getuser(),
-                        'tags': self.tags,
-                        'fields': self.fields
-                    }
-                    userdata.update(aux_data)
+            log.debug(
+                'Writing item "{}" to storage '
+                '"{}"...'.format(self, self.storage.name)
+            )
 
-                    self.accessor.write(
-                        self.uid + '.meta',
-                        json.dumps(userdata, indent=2, default=_json_encoder)
-                    )
+            try:
+                self.accessor.write(self._uid, data)
+            except:
+                reraise(
+                    AccessorError,
+                    'Failed to write to item "{}". '
+                    '{}'.format(self, sys.exc_info()[1]),
+                    sys.exc_info()[2]
+                )
 
-            this._log.debug('Done')
+            if dump_metadata:
+                self._dump_metadata()
+
+            log.debug('Done')
 
         def _write_next():
-            if self.next_item:
+            if not self.next_item:
+                return
 
-                if self._userdata:
-                    self.next_item.set_userdata_dict(self._userdata)
+            if dump_metadata:
+                self.next_item.copy_metadata(self)
 
-                self.next_item.write(data, overwrite, direction)
+            self.next_item.write(data, upstream)
 
-        if direction == TraverseDirection.UPSTREAM:
+        if current_item_only:
+            return _write_self()
+
+        if upstream:
             _write_self()
             _write_next()
         else:
             _write_next()
             _write_self()
 
+    def load(self, load_metadata=False):
+        downstream_item = self.get_downstream_item()
+        if downstream_item.exists():
+            return
+
+        data = self.read(load_metadata=load_metadata)
+        if data is None:
+            raise ItemLoadingError('There is no data available for item: {}'.format(self))
+
+        self.write(data, dump_metadata=load_metadata)
+        return data
+
     def make_directories(self):
-        self.accessor.make_dir(self.uid, True)
+        try:
+            self.accessor.make_dir(self._uid, True)
+        except:
+            reraise(
+                AccessorError,
+                'Failed to make directories for item "{}". {}'.format(self, sys.exc_info()[1]),
+                sys.exc_info()[2]
+            )
 
-    def remove(self, recursive=True):
-        self.accessor.rm(self.uid)
-        if recursive and self.next_item:
-            self.next_item.remove(recursive)
-
-    def replicate(self, overwrite=False, direction=TraverseDirection.DOWNSTREAM):
-        data = self.read(direction)
-        if data is not None:
-            self.write(data, overwrite)
+    def remove(self, propagate=True):
+        log.debug('Removing item "{}"'.format(self))
+        try:
+            self.accessor.rm(self._uid)
+        except:
+            reraise(
+                AccessorError,
+                'Failed to remove item "{}". {}'.format(self, sys.exc_info()[1]),
+                sys.exc_info()[2]
+            )
+        if propagate and self.next_item:
+            self.next_item.remove(propagate)
+        log.debug('Done')
 
     def __str__(self):
         return self.__repr__()
@@ -404,107 +902,89 @@ class StorageItem(BaseItem):
             "StorageItem(tags={}, fields={}, "
             "uid='{}', storage='{}')"
         ).format(
-            repr(self.tags),
-            repr(self.fields),
-            self.uid,
-            self.storage.name if self.storage else None
+            repr(self._tags),
+            repr(self._fields),
+            self._uid,
+            self.storage.name
         )
 
 
 class StoragePool(object):
 
-    def __init__(self, storage_pool_config):
-        self._pool_config = storage_pool_config
+    def __init__(self, project, pool_config):
+        self._project = project
+        self._pool_config = validate_pool_config(pool_config)
+        self._init_storages()
 
-        self._storages = None
-
-        self._get_storages()
-
-    def _get_storages(self):
+    def _init_storages(self):
         """Initialize storages from provided configuration.
 
         Returns:
             list: Cached list of Storage objects.
 
         """
-        if not self._storages:
+        self._storages = []
 
-            self._storages = []
+        self._load_hooks()
 
-            self._load_hooks()
+        for storage_config in self._pool_config:
 
-            for storage_name, storage_config in self._pool_config.items():
+            storage_name = storage_config['name']
 
-                try:
-                    storage = Storage.create_storage(
-                        storage_name, storage_config)
-                except Exception as e:
-                    this._log.error(
-                        'Failed to create storage "{}". {}'.format(storage_name, str(e)))
-                    continue
+            try:
+                storage = Storage.create_storage(storage_name, storage_config)
+            except:
+                reraise(
+                    StorageError,
+                    'Failed to create storage "{}". {}'.format(storage_name, sys.exc_info()[1]),
+                    sys.exc_info()[2]
+                )
 
-                self._storages.append(storage)
-
-        return self._storages
+            self._storages.append(storage)
 
     def _load_hooks(self):
         """Load hooks stored under current package."""
-        bd_hooks.load([os.path.join(os.path.dirname(__file__), 'hooks')])
+        bd_hooks.load([putils.join(putils.dirname(__file__), 'hooks')])
 
-    def _get_matching_storages(self, tags, stop_before=None):
-        """Get a list of storages suitable to store items with specified tags.
+    def extract_data_from_filename(self, filename):
+        filename = putils.normpath(filename)
 
-        Args:
-            tags (list[str]): a list of tags.
-            stop_before (str, optional): stop iterating when the next 
-                candidate storage has this name. Defaults to None.
+        try:
+            uid = filename[filename.index('/{}/'.format(self._project)) + 1:]
+        except ValueError:
+            raise ProjectNameNotFound(
+                'Project name \'{}\' not found in path \'{}\''.format(self._project, filename)
+            )
 
-        Returns:
-            list[Storage]: a list of storages which mask matches provided tags.
-
-        """
-        storages = []
-        for storage in self._get_storages():
-
-            if stop_before and storage.name == stop_before:
-                break
-
-            if storage.is_matching(tags):
-                storages.append(storage)
-
-        return storages
-
-    def get_item_from_filename(self, filename):
         for storage in self._storages:
-            item = storage.get_item_from_filename(filename)
-            if item:
-                return self.get_item(item.tags, item.fields)
 
-    def get_item(self, tags, fields):
-        last_item = None
-        current_item = None
-
-        storages = self._get_matching_storages(tags)
-        if not storages:
-            this._log.error('Storage matching {} tags not found'.format(tags))
-            return
-
-        for storage in reversed(storages):
-
-            item = storage.get_item(tags, fields)
-            if not item:
-                this._log.warning(
-                    'There is no item in the storage "{}" matching the specified '
-                    'combination of tags and fields: tags={}, fields={}'.format(storage.name, tags, fields)
-                )
+            tags, fields = storage.get_data_from_uid(uid)
+            if not (tags and fields):
                 continue
 
-            current_item = item
+            return tags, fields
 
-            if last_item:
-                current_item.next_item = last_item
-                last_item.prev_item = current_item
+    def get_item(self, tags):
+        if isinstance(tags, TagsMixin):
+            tags = tags.tags
+        elif tags and not isinstance(tags, (tuple, list, set, frozenset)):
+            raise InputError(
+                'Argument "tags" has invalid type "{}"'.format(type(tags).__name__)
+            )
 
-            last_item = current_item
+        item = prev_item = None
 
-        return current_item
+        for storage in self._storages:
+
+            meta_item = storage.get_item(tags)
+            if not meta_item:
+                continue
+
+            if item is None:
+                item = meta_item
+            else:
+                meta_item.set_prev_item(prev_item)
+
+            prev_item = meta_item
+
+        return item
