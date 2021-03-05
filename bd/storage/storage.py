@@ -3,12 +3,9 @@ __all__ = ['StoragePool', 'MetaItem']
 import os
 import re
 import sys
-import uuid
 import logging
-import tempfile
 import getpass
 import json
-import collections
 import datetime
 
 import bd.hooks as bd_hooks
@@ -138,7 +135,7 @@ class Storage(object):
             except bd_hooks.HookError:
                 reraise(
                     AdapterCreationError,
-                    'Failed to initialize adapter "{}"'.format(accessor_name),
+                    'Failed to initialize adapter "{}"'.format(adapter_name),
                     sys.exc_info()[2]
                 )
 
@@ -446,7 +443,9 @@ class MetaItem(TagsMixin, ChainItemMixin):
             if ItemCollectionFn.PRIMARY_FIELD not in fields:
                 fields[ItemCollectionFn.PRIMARY_FIELD] = ''
 
-        for meta_item in self.iter_chain():
+        downstream_meta_item = self.get_downstream_item()
+
+        for meta_item in downstream_meta_item.iter_chain():
 
             curr_fields = fields
             if meta_item._adapter:
@@ -462,9 +461,10 @@ class MetaItem(TagsMixin, ChainItemMixin):
                 meta_item
             )
 
-            if target_storage_item is None:
+            if meta_item is self:
                 target_storage_item = curr_storage_item
-            else:
+
+            if prev_storage_item:
                 curr_storage_item.set_prev_item(prev_storage_item)
 
             prev_storage_item = curr_storage_item
@@ -519,11 +519,15 @@ class UTBase(FieldsEdit):
             fields.set_field(self.PRIMARY_FIELD, primary_field_value)
         return self._meta_item.get_storage_item(fields)
 
-    def load(self, load_metadata=False):
-        for member_item in self.get_items():
-            member_item.load(load_metadata)
+    def pull(self, with_metadata=False):
+        for member_item in self.get_items(from_upstream=True):
+            member_item.pull(with_metadata)
 
-    def get_items(self):
+    def push(self, with_metadata=False):
+        for member_item in self.get_items(from_upstream=False):
+            member_item.push(with_metadata)
+
+    def get_items(self, from_upstream=True):
         pass
 
 
@@ -531,14 +535,15 @@ class ItemRevisionFn(UTBase):
 
     PRIMARY_FIELD = '_version_'
 
-    def get_items(self):
+    def get_items(self, from_upstream=False):
         fields = FieldsEdit(self.fields)
         fields.set_field(self.PRIMARY_FIELD, 96969696969696)      # adding just to detect it later
 
         revision_numbers = set()
 
-        item = self._meta_item.get_upstream_item()
-        uid = item.build_uid(fields)
+        meta_item = self._meta_item.get_upstream_item() if from_upstream else self._meta_item
+
+        uid = meta_item.build_uid(fields)
         if not uid:
             return []
 
@@ -546,7 +551,7 @@ class ItemRevisionFn(UTBase):
         uid_basename_pattern = re.escape(uid_basename).replace('96969696969696', '(\d+)')
 
         try:
-            nested_uids = item.accessor.list(uid_dirname, recursive=False)
+            nested_uids = meta_item.accessor.list(uid_dirname, recursive=False)
         except:
             reraise(AccessorError, *sys.exc_info()[1:])
 
@@ -558,27 +563,31 @@ class ItemRevisionFn(UTBase):
         revision_numbers = list(revision_numbers)
         revision_numbers.sort()
 
-        members = []
-        for revision_number in revision_numbers:
-            member_item = self.get_storage_item(revision_number)
-            if member_item:
-                members.append(member_item)
+        member_items = []
 
-        return members
+        for revision_number in revision_numbers:
+
+            fields.set_field(self.PRIMARY_FIELD, revision_number)
+
+            member_item = meta_item.get_storage_item(fields)
+            if member_item:
+                member_items.append(member_item)
+
+        return member_items
 
 
 class ItemSequenceFn(UTBase):
 
     PRIMARY_FIELD = '_index_'
 
-    def get_items(self):
+    def get_items(self, from_upstream=True):
         fields = FieldsEdit(self.fields)
         fields.set_field(self.PRIMARY_FIELD, 96969696969696)      # adding just to detect it later
 
         indexes = set()
 
-        item = self._meta_item.get_upstream_item()
-        uid = item.build_uid(fields)
+        meta_item = self._meta_item.get_upstream_item() if from_upstream else self._meta_item
+        uid = meta_item.build_uid(fields)
         if not uid:
             return []
 
@@ -586,7 +595,7 @@ class ItemSequenceFn(UTBase):
         uid_basename_pattern = re.escape(uid_basename).replace('96969696969696', '(\d+)')
 
         try:
-            nested_uids = item.accessor.list(uid_dirname, recursive=False)
+            nested_uids = meta_item.accessor.list(uid_dirname, recursive=False)
         except:
             reraise(AccessorError, *sys.exc_info()[1:])
 
@@ -598,31 +607,34 @@ class ItemSequenceFn(UTBase):
         indexes = list(indexes)
         indexes.sort()
 
-        members = []
+        member_items = []
         for index in indexes:
-            member_item = self.get_storage_item(index)
-            if member_item:
-                members.append(member_item)
 
-        return members
+            fields.set_field(self.PRIMARY_FIELD, index)
+
+            member_item = meta_item.get_storage_item(fields)
+            if member_item:
+                member_items.append(member_item)
+
+        return member_items
 
 
 class ItemCollectionFn(UTBase):
 
     PRIMARY_FIELD = '_suffix_'
 
-    def get_items(self):
+    def get_items(self, from_upstream=True):
         fields = FieldsEdit(self.fields)
         fields.set_field(self.PRIMARY_FIELD, '')      # adding just to detect it later
 
-        item = self._meta_item.get_upstream_item()
+        meta_item = self._meta_item.get_upstream_item() if from_upstream else self._meta_item
 
-        uid = item.build_uid(fields)
+        uid = meta_item.build_uid(fields)
         if not uid:
             return []
 
         try:
-            relative_suffix_uids = item.accessor.list(uid)
+            relative_suffix_uids = meta_item.accessor.list(uid)
         except:
             reraise(AccessorError, *sys.exc_info()[1:])
 
@@ -630,15 +642,16 @@ class ItemCollectionFn(UTBase):
         for relative_suffix_uid in relative_suffix_uids:
             suffixes.add(relative_suffix_uid)
 
-        members = []
+        member_items = []
         for suffix in suffixes:
-            members.append(self.get_storage_item(suffix))
 
-        return members
+            fields.set_field(self.PRIMARY_FIELD, suffix)
 
-    def load(self, load_metadata=False):
-        for member_item in self.get_items():
-            member_item.load(load_metadata)
+            member_item = meta_item.get_storage_item(fields)
+            if member_item:
+                member_items.append(member_item)
+
+        return member_items
 
 
 class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
@@ -690,7 +703,7 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
     def get_filesystem_path(self):
         return self.accessor.get_filesystem_path(self._uid)
 
-    def read(self, current_item_only=False, upstream=True, load_metadata=False):
+    def read(self, current_item_only=False, upstream=True, with_metadata=False):
 
         def _read_self():
             try:
@@ -704,9 +717,9 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
                 )
 
             if data is not None:
-                log.debug('Read item data from storage "{}"'.format(self.storage.name))
+                log.debug('Read data from item "{}"'.format(self))
 
-            if load_metadata:
+            if with_metadata:
                 # if .txt or .meta file is found parse it
                 # and use the data as metadata
                 self.set_metadata_dict(self._load_metadata())
@@ -715,9 +728,9 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
 
         def _read_next():
             if self.next_item:
-                data = self.next_item.read(upstream=upstream, load_metadata=load_metadata)
+                data = self.next_item.read(upstream=upstream, with_metadata=with_metadata)
 
-                if load_metadata:
+                if with_metadata:
                     # copy metadata from next item to current
                     self.copy_metadata(self.next_item)
 
@@ -812,7 +825,7 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
                     active_section = title
         return data
 
-    def write(self, data, current_item_only=False, upstream=True, dump_metadata=False):
+    def write(self, data, current_item_only=False, upstream=True, with_metadata=False):
 
         def _write_self():
 
@@ -820,8 +833,7 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
                 return
 
             log.debug(
-                'Writing item "{}" to storage '
-                '"{}"...'.format(self, self.storage.name)
+                'Writing to item "{}" ...'.format(self)
             )
 
             try:
@@ -834,7 +846,7 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
                     sys.exc_info()[2]
                 )
 
-            if dump_metadata:
+            if with_metadata:
                 self._dump_metadata()
 
             log.debug('Done')
@@ -843,10 +855,10 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
             if not self.next_item:
                 return
 
-            if dump_metadata:
+            if with_metadata:
                 self.next_item.copy_metadata(self)
 
-            self.next_item.write(data, upstream)
+            self.next_item.write(data, upstream=upstream, with_metadata=with_metadata)
 
         if current_item_only:
             return _write_self()
@@ -858,16 +870,24 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
             _write_next()
             _write_self()
 
-    def load(self, load_metadata=False):
+    def pull(self, with_metadata=False):
         downstream_item = self.get_downstream_item()
-        if downstream_item.exists():
+        if not downstream_item or downstream_item.exists():
             return
 
-        data = self.read(load_metadata=load_metadata)
+        data = self.read(upstream=False, with_metadata=with_metadata)
         if data is None:
             raise ItemLoadingError('There is no data available for item: {}'.format(self))
 
-        self.write(data, dump_metadata=load_metadata)
+        downstream_item.write(data, with_metadata=with_metadata)
+        return data
+
+    def push(self, with_metadata=False):
+        data = self.read(with_metadata=with_metadata)
+        if data is None:
+            raise ItemLoadingError('There is no data available for item: {}'.format(self))
+
+        self.write(data, with_metadata=with_metadata)
         return data
 
     def make_directories(self):
