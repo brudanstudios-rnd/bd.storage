@@ -1,8 +1,0 @@
-image: geosam/bitbucket-aws-deploy:latest
-pipelines:
-  tags:
-    'v*.*.*':
-      - step:
-          name: deploy package
-          script:
-            - artifact-deploy package --region-name=${AWS_REGION}
