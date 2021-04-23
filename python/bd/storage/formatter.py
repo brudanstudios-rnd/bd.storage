@@ -65,8 +65,8 @@ class FieldFormatter(object):
             )
         except KeyError as e:
             pass
-        except:
-            reraise(ParsingError, *sys.exc_info()[1:])
+        except Exception as e:
+            reraise(ParsingError, ParsingError(e), sys.exc_info()[2])
         else:
             result = parse.parse(typed_format, input_str, self._custom_type_parsers, case_sensitive=True)
             if not result:
@@ -92,8 +92,8 @@ class FieldFormatter(object):
                 'Unable to format template "{}" due to '
                 'missing field: {}'.format(template, str(e))
             )
-        except:
-            reraise(FormattingError, *sys.exc_info()[1:])
+        except Exception as e:
+            reraise(FormattingError, FormattingError(e), sys.exc_info()[2])
 
     def _ensure_extra_fields(self, field_formatting_config):
         if '_index_' not in field_formatting_config:

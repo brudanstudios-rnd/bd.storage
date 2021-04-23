@@ -107,8 +107,8 @@ class UTItemRevision(UTBase):
 
         try:
             uid_tails = meta_item.accessor.list(uid_root, recursive=False)
-        except:
-            reraise(AccessorError, *sys.exc_info()[1:])
+        except Exception as e:
+            reraise(AccessorError, AccessorError(e), sys.exc_info()[2])
 
         for uid_tail in sorted(uid_tails):
             match = re.match(uid_tail_pattern, uid_tail)
@@ -130,8 +130,8 @@ class UTItemCollection(UTBase):
     def _get_primary_field_values(self, meta_item, uid):
         try:
             relative_suffix_uids = meta_item.accessor.list(uid)
-        except:
-            reraise(AccessorError, *sys.exc_info()[1:])
+        except Exception as e:
+            reraise(AccessorError, AccessorError(e), sys.exc_info()[2])
 
         suffixes = set()
         for relative_suffix_uid in relative_suffix_uids:

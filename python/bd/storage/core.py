@@ -24,7 +24,7 @@ from .enums import ItemType, ItemTypePrimaryFields
 
 log = logging.getLogger(__name__)
 
-_storage_pool_instance = None
+_global_instance = None
 
 
 class Storage(object):
@@ -76,10 +76,10 @@ class Storage(object):
 
         try:
             return bd_hooks.execute(accessor_name, **accessor_kwargs).one()
-        except bd_hooks.HookError:
+        except bd_hooks.HookError as e:
             reraise(
                 AccessorCreationError,
-                'Failed to initialize accessor "{}"'.format(accessor_name),
+                AccessorCreationError('Failed to initialize accessor "{}"'.format(accessor_name)),
                 sys.exc_info()[2]
             )
 
@@ -135,7 +135,7 @@ class Storage(object):
             except bd_hooks.HookError:
                 reraise(
                     AdapterCreationError,
-                    'Failed to initialize adapter "{}"'.format(adapter_name),
+                    AdapterCreationError('Failed to initialize adapter "{}"'.format(adapter_name)),
                     sys.exc_info()[2]
                 )
 
@@ -302,6 +302,9 @@ class MetaItem(TagsMixin, ChainItemMixin):
         if isinstance(fields, FieldsEdit):
             fields = fields.fields
 
+        if 'project' not in fields:
+            fields['project'] = self.project
+
         if self._adapter:
             fields = self._adapter.to_current(fields.copy())
 
@@ -358,7 +361,7 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
         except:
             reraise(
                 AccessorError,
-                'Failed to check if item "{}" exists. {}'.format(self, sys.exc_info()[1]),
+                AccessorError('Failed to check if item "{}" exists. {}'.format(self, sys.exc_info()[1])),
                 sys.exc_info()[2]
             )
 
@@ -373,8 +376,7 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
             except:
                 reraise(
                     AccessorError,
-                    'Failed to read item "{}". '
-                    '{}'.format(self, sys.exc_info()[1]),
+                    AccessorError('Failed to read item "{}". {}'.format(self, sys.exc_info()[1])),
                     sys.exc_info()[2]
                 )
 
@@ -423,7 +425,7 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
         if self._metadata:
             metadata = utils.remove_extra_fields(self._metadata)
             if metadata:
-                aux_data.update(metadata)
+                metadata.update(aux_data)
 
         try:
             json_data = json.dumps(aux_data, indent=2, default=json_encoder)
@@ -435,8 +437,10 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
         except:
             reraise(
                 AccessorError,
-                'Failed to write metadata for item "{}". '
-                '{}'.format(self, sys.exc_info()[1]),
+                AccessorError(
+                    'Failed to write metadata for item "{}". '
+                    '{}'.format(self, sys.exc_info()[1])
+                ),
                 sys.exc_info()[2]
             )
 
@@ -503,8 +507,10 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
             except:
                 reraise(
                     AccessorError,
-                    'Failed to write to item "{}". '
-                    '{}'.format(self, sys.exc_info()[1]),
+                    AccessorError(
+                        'Failed to write to item "{}". '
+                        '{}'.format(self, sys.exc_info()[1])
+                    ),
                     sys.exc_info()[2]
                 )
 
@@ -558,7 +564,11 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
         except:
             reraise(
                 AccessorError,
-                'Failed to make directories for item "{}". {}'.format(self, sys.exc_info()[1]),
+                AccessorError(
+                    'Failed to make directories for item "{}". {}'.format(
+                        self, sys.exc_info()[1]
+                    )
+                ),
                 sys.exc_info()[2]
             )
 
@@ -569,7 +579,11 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
         except:
             reraise(
                 AccessorError,
-                'Failed to remove item "{}". {}'.format(self, sys.exc_info()[1]),
+                AccessorError(
+                    'Failed to remove item "{}". {}'.format(
+                        self, sys.exc_info()[1]
+                    )
+                ),
                 sys.exc_info()[2]
             )
         if propagate and self.next_item:
@@ -593,10 +607,26 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
 
 class StoragePool(object):
 
-    def __init__(self, project, config):
-        self._project = project
+    @classmethod
+    def get_global_instance(cls):
+        return _global_instance
+
+    @classmethod
+    def create(cls, config, global_instance=False):
+        config = validate_pool_config(config)
+
+        pool = cls(config)
+
+        if global_instance:
+            global _global_instance
+            _global_instance = pool
+
+        return pool
+
+    def __init__(self, config):
         self._storages = []
-        self._pool_config = validate_pool_config(config)
+        self._pool_config = config
+        self._project = self._pool_config['project']
         self._init_storages()
 
     @property
@@ -663,7 +693,7 @@ class StoragePool(object):
 
         load_hooks()
 
-        for storage_config in self._pool_config:
+        for storage_config in self._pool_config['storages']:
 
             storage_name = storage_config['name']
 
@@ -672,7 +702,11 @@ class StoragePool(object):
             except:
                 reraise(
                     StorageError,
-                    'Failed to create storage "{}". {}'.format(storage_name, sys.exc_info()[1]),
+                    StorageError(
+                        'Failed to create storage "{}". {}'.format(
+                            storage_name, sys.exc_info()[1]
+                        )
+                    ),
                     sys.exc_info()[2]
                 )
 

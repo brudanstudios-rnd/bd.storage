@@ -55,6 +55,9 @@ class FieldsMixin(object):
     def extra_fields(self):
         return {name: value for name, value in self._fields.items() if name.startswith('_')}
 
+    def get_field(self, name):
+        return self._fields.get(name)
+
     def __str__(self):
         return self.__repr__()
 
