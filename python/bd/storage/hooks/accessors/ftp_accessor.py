@@ -2,6 +2,7 @@ import sys
 import uuid
 import ftplib
 import logging
+
 try:
     from StringIO import StringIO
 except ImportError:
@@ -9,7 +10,7 @@ except ImportError:
 
 from six import BytesIO, reraise
 
-from bd.storage.accessor import BaseAccessor
+from bd.storage.accessor import BaseAccessor, FileSystemAccessor
 from bd.storage.utils import putils
 from bd.storage.errors import *
 
@@ -19,13 +20,14 @@ log = logging.getLogger(__name__)
 class FTPAccessor(BaseAccessor):
 
     def __init__(
-            self, 
+            self,
             root=None,
             host=None,
             username=None,
             password=None,
             timeout=None,
-            write_mode=775):
+            write_mode=775
+    ):
 
         super(FTPAccessor, self).__init__(root)
 
@@ -33,6 +35,11 @@ class FTPAccessor(BaseAccessor):
         self._username = username
         self._password = password
         self._timeout = timeout
+
+        self._fs_accessor = None
+        if root:
+            self._fs_accessor = FileSystemAccessor(root)
+
         self._write_mode = write_mode
         self._ftp = None
 
@@ -62,33 +69,27 @@ class FTPAccessor(BaseAccessor):
             return uid
         return putils.join(self._root, uid)
 
-    # def read(self, uid):
-    #     filename = self.resolve(uid)
-    #
-    #     if not putils.exists(filename):
-    #         return
-    #
-    #     with open(filename, 'rb') as f:
-    #         data = f.read()
-    #
-    #     return data
-
     def read(self, uid):
-        self._ensure_connected()
+        if self._fs_accessor:
+            data = self._fs_accessor.read(uid)
+        else:
+            self._ensure_connected()
 
-        data_buffer = BytesIO()
-        
-        try:
-            self._ftp.retrbinary('RETR {}'.format(uid), data_buffer.write)
-        except ftplib.error_perm as e:
+            data_buffer = BytesIO()
 
-            # if file doesn't exist
-            if e.message[:3] == '550':
-                return
+            try:
+                self._ftp.retrbinary('RETR {}'.format(uid), data_buffer.write)
+            except ftplib.error_perm as e:
 
-            raise
+                # if file doesn't exist
+                if e.message[:3] == '550':
+                    return
 
-        return data_buffer.getvalue()
+                raise
+
+            data = data_buffer.getvalue()
+
+        return data
 
     def write(self, uid, data):
         self._ensure_connected()
@@ -162,28 +163,31 @@ class FTPAccessor(BaseAccessor):
         return data
 
     def list(self, uid, relative=True, recursive=True):
-        self._ensure_connected()
+        if self._fs_accessor:
+            return self._fs_accessor.list(uid, relative, recursive)
+        else:
+            self._ensure_connected()
 
-        initial_dir = uid.rstrip('/')
+            initial_dir = uid.rstrip('/')
 
-        self._ftp.cwd(initial_dir)
+            self._ftp.cwd(initial_dir)
 
-        try:
-            if recursive:
-                start_index = len(initial_dir)
+            try:
+                if recursive:
+                    start_index = len(initial_dir)
+                    return [
+                        path[start_index + 1:] if relative else path
+                        for path in self._traverse()
+                        if path not in ['.', '..']
+                    ]
+
                 return [
-                    path[start_index + 1:] if relative else path
-                    for path in self._traverse()
-                    if path not in ['.', '..']
+                    entry if relative else putils.join(initial_dir, entry)
+                    for entry in self._ftp.nlst()
+                    if entry not in ('.', '..')
                 ]
-
-            return [
-                entry if relative else putils.join(initial_dir, entry)
-                for entry in self._ftp.nlst()
-                if entry not in ('.', '..')
-            ]
-        finally:
-            self._ftp.cwd('/')
+            finally:
+                self._ftp.cwd('/')
 
     def make_dir(self, uid, recursive=False):
         self._ensure_connected()
@@ -236,21 +240,24 @@ class FTPAccessor(BaseAccessor):
             self._ftp.delete(uid)
 
     def exists(self, uid):
-        self._ensure_connected()
+        if self._fs_accessor:
+            return self._fs_accessor.exists(uid)
+        else:
+            self._ensure_connected()
 
-        try:
-            files = self._ftp.nlst(putils.dirname(uid))
-            return uid in files
-        except ftplib.error_perm as e:
+            try:
+                files = self._ftp.nlst(putils.dirname(uid))
+                return uid in files
+            except ftplib.error_perm as e:
 
-            if e.message[:3] != '550':
-                raise
+                if e.message[:3] != '550':
+                    raise
 
-            return False
+                return False
 
     def get_filesystem_path(self, uid):
-        return
-        
+        return self._fs_accessor.get_filesystem_path(uid) if self._fs_accessor else None
+
     def __del__(self):
         try:
             self._ftp.close()

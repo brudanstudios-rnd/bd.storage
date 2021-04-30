@@ -24,9 +24,6 @@ class S3Accessor(BaseAccessor):
                  access_key_id=None, secret_access_key=None):
         super(S3Accessor, self).__init__()
 
-        self._access_key_id = access_key_id
-        self._secret_access_key = secret_access_key
-
         with warnings.catch_warnings(record=True):
             warnings.filterwarnings('ignore')
 

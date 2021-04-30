@@ -9,6 +9,7 @@ from six import reraise
 from .edits import TagsEdit, FieldsEdit
 from . import queries
 from . import utils
+from .core import StoragePool
 from .errors import *
 
 log = logging.getLogger(__name__)
@@ -33,18 +34,8 @@ class Revision(object):
                 queries.PUBLISH_REVISION_MUTATION,
                 {"revision_id": self.id, "comment": comment}
             )
-        except:
-            error_message, error_traceback = sys.exc_info()[1:]
-
-            try:
-                storage_item.remove()
-            except StorageError as e:
-                log.warning(
-                    'Unable to cleanup data after the failed revision '
-                    'publish. {}'.format(str(e))
-                )
-
-            reraise(RevisionPublishError, error_message, error_traceback)
+        except Exception as e:
+            reraise(RevisionPublishError, RevisionPublishError(e), sys.exc_info()[2])
         else:
             self.comment = comment
             self.published = True
@@ -55,8 +46,8 @@ class Revision(object):
                 queries.CHANGE_REVISION_OWNERSHIP_MUTATION,
                 {"revision_id": self.id, "user_id": user_data['id']}
             )
-        except:
-            reraise(ChangeOwnershipError, *sys.exc_info()[1:])
+        except Exception as e:
+            reraise(ChangeOwnershipError, ChangeOwnershipError(e), sys.exc_info()[2])
         else:
             self.user = user_data
 
@@ -117,61 +108,91 @@ class Revision(object):
 
 class Component(object):
 
-    def __init__(self, storage_pool, component_data):
-        self.pool = storage_pool
-        self.revisions = []
-        for key, val in component_data.items():
+    def __init__(self, tags, fields):
+        self.tags = utils.remove_extra_tags(tags)
+        self.fields = utils.remove_extra_fields(fields)
+
+        self.id = utils.create_id(tags, fields)
+
+    def get_revisions(self, limit=10):
+        try:
+            data = Session().execute(
+                queries.GET_REVISIONS_QUERY,
+                {
+                    'id': self.id,
+                    'limit': limit
+                }
+            )
+        except Exception as e:
+            reraise(RevisionsGetError, RevisionsGetError(e), sys.exc_info()[2])
+        else:
+            revisions = []
+
+            query_result = data['getComponentRevisions']
+
+            if query_result:
+                for revision_data in query_result:
+                    revision = Revision(revision_data)
+                    revision.component = self
+                    revisions.append(revision)
+
+            return revisions
+
+    def create_revision(self, force_ownership=False):
+        revision = None
+        try:
+            data = Session().execute(
+                queries.CREATE_REVISION_MUTATION,
+                {
+                    "id": self.id,
+                    "tags": self.tags,
+                    "fields": self.fields
+                }
+            )
+        except Exception as e:
+            reraise(RevisionCreateError, RevisionCreateError(e), sys.exc_info()[2])
+        else:
+            revision_data = data['createComponentRevision']
+
+            revision = Revision(revision_data)
+            revision.component = self
+
+        # else:
+        #     try:
+        #         current_user = Session().current_user()
+        #     except:
+        #         reraise(UserRequestError, *sys.exc_info()[1:])
+        #     else:
+        #         if revision.user['id'] != current_user['id']:
+        #             if not force_ownership:
+        #                 raise RevisionOwnershipError(
+        #                     'Revision is already checked out by "{}". '
+        #                     'Please contact that person to resolve.'.format(
+        #                         revision.user['email']
+        #                     )
+        #                 )
+        #
+        #             revision.change_owner(current_user)
+
+        return revision
+
+    def _update_from_dict(self, data):
+
+        supported_keys = frozenset(('id', 'tags', 'fields', 'created_at', 'revisions'))
+
+        for key, value in data.items():
+
+            if key not in supported_keys:
+                continue
+
             if key == 'revisions':
-                for revision_data in val:
+                self.revisions = []
+                for revision_data in value:
                     revision = Revision(revision_data)
                     revision.component = self
                     self.revisions.append(revision)
             else:
-                setattr(self, key, val)
-
-    def find_revision(self, published=None, version=None):
-        if version is not None:
-            return next((r for r in self.revisions if r.version == version), None)
-        if published is not None:
-            return next((r for r in self.revisions if r.published == published), None)
-        return self.revisions[0]
-
-    def create_revision(self, force_ownership=False):
-        revision = self.find_revision()
-
-        if revision.published:
-            try:
-                data = Session().execute(
-                    queries.CREATE_REVISION_MUTATION,
-                    {"component_id": self.id}
-                )
-            except:
-                reraise(RevisionCreateError, *sys.exc_info()[1:])
-            else:
-                revision_data = data['createComponentRevision']
-
-                revision = Revision(revision_data)
-                revision.component = self
-
-                self.revisions.insert(0, revision)
-        else:
-            try:
-                current_user = Session().current_user()
-            except:
-                reraise(UserRequestError, *sys.exc_info()[1:])
-            else:
-                if revision.user['id'] != current_user['id']:
-                    if not force_ownership:
-                        raise RevisionOwnershipError(
-                            'Revision is already checked out by "{}". '
-                            'Please contact that person to resolve.'.format(
-                                revision.user['email']
-                            )
-                        )
-
-                    revision.change_owner(current_user)
-
-        return revision
+                setattr(self, key, value)
 
     def to_dict(self, caller=None):
         d = {}
@@ -209,57 +230,41 @@ class Component(object):
         )
 
 
-class ComponentControl(object):
+class ComponentFactory(object):
 
     def __init__(self, storage_pool):
         self._pool = storage_pool
 
-    def find_component(self, tags, fields):
+    def get_component(self, tags, fields):
+        tags, fields = self._prepare_data(tags, fields)
+        _id = utils.create_id(tags, fields)
+        return Component(id=_id, tags=tags, fields=fields)
+
+    # def add_component(self, tags, fields):
+    #     tags, fields = self._prepare_data(tags, fields)
+    #     component_id = utils.create_id(tags, fields)
+    #
+    #     try:
+    #         data = Session().execute(
+    #             queries.ENSURE_COMPONENT_MUTATION,
+    #             {
+    #                 "id": component_id,
+    #                 "tags": tags,
+    #                 "fields": fields
+    #             }
+    #         )
+    #     except:
+    #         reraise(ComponentCreateError, *sys.exc_info()[1:])
+    #     else:
+    #         component_data = data['createComponent']
+    #         if component_data:
+    #             return Component(self._pool, component_data)
+
+    def _prepare_data(self, tags, fields):
         tags = utils.remove_extra_tags(tags)
         fields = utils.remove_extra_fields(fields)
 
         if 'project' not in fields:
             fields['project'] = self._pool.project
 
-        component_id = utils.create_id(tags, fields)
-
-        try:
-            data = Session().execute(
-                queries.FIND_COMPONENT_QUERY,
-                {
-                    "id": component_id
-                }
-            )
-        except:
-            reraise(ComponentFindError, *sys.exc_info()[1:])
-        else:
-            component_data = data['getComponent']
-            if component_data:
-                return Component(self._pool, component_data)
-
-    def create_component(self, tags, fields, metadata=None):
-
-        tags = utils.remove_extra_tags(tags)
-        fields = utils.remove_extra_fields(fields)
-
-        if 'project' not in fields:
-            fields['project'] = self._pool.project
-
-        component_id = utils.create_id(tags, fields)
-
-        try:
-            data = Session().execute(
-                queries.CREATE_COMPONENT_MUTATION,
-                {
-                    "id": component_id,
-                    "tags": tags,
-                    "fields": fields,
-                    "metadata": metadata
-                }
-            )
-        except:
-            reraise(ComponentCreateError, *sys.exc_info()[1:])
-        else:
-            component_data = data['createComponent']
-            if component_data:
-                return Component(self._pool, component_data)
+        return tags, fields
