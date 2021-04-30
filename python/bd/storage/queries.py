@@ -1,45 +1,60 @@
-CREATE_COMPONENT_MUTATION = '''
-mutation CreateComponent($id: String!, $tags: jsonb!, $fields: jsonb!, $metadata: jsonb) {
-    createComponent(
-        object: {
-            id: $id, 
-            tags: $tags, 
-            fields: $fields, 
-            metadata: $metadata,
-            revisions: {
-                data: {
-                    published: false
-                }
-            }
-        }
-    ){
+GET_REVISIONS_QUERY = '''
+query GetRevisions($id: String!, $limit: Int = 10) {
+    getComponentRevisions(
+        where: {
+            component_id: {_eq: $id}
+        }, 
+        order_by: {id: desc},
+        limit: $limit
+    ) {
         id
-        tags
-        fields
-        metadata
-        revisions {
-            id
-            version
-            comment
-            published
-            user {
-                id
-                email
-            }
-        }
+        version
+        published
+        comment
+        created_at
+        user_id
     }
 }
 '''
 
+DELETE_COMPONENT_MUTATION = '''
+mutation DeleteComponent($id: String!) {
+    deleteComponent(id: $id) {
+        id
+    }
+}
+'''
+
+# this query upserts
 CREATE_REVISION_MUTATION = '''
-mutation CreateRevision($component_id: String!) {
-    createComponentRevision(object: {component_id: $component_id}){
+mutation CreateRevision($id: String!, $tags: jsonb!, $fields: jsonb!) {
+    createComponentRevision(
+        object: {
+            published: false,
+            component: {
+                data: {
+                    id: $id,
+                    tags: $tags,
+                    fields: $fields
+                },
+                on_conflict: {
+                    constraint: components_pkey,
+                    update_columns: id
+                }
+            }      
+        },
+        on_conflict: {
+            constraint: component_revisions_component_id_version_key,
+            update_columns: component_id
+        }
+    ) {
         id
         version
-        comment
         published
+        comment
+        created_at
+        user_id
         user {
-            id
             email
         }
     }
@@ -47,56 +62,31 @@ mutation CreateRevision($component_id: String!) {
 '''
 
 PUBLISH_REVISION_MUTATION = '''
-mutation ChangeRevisionStatus($revision_id: Int!, $comment: String) {
-    updateComponentRevision(_set: {published: true, comment: $comment}, pk_columns: {id: $revision_id}) {
+mutation PublishRevision($revision_id: Int!, $comment: String) {
+    updateComponentRevision(
+        _set: {published: true, comment: $comment}, 
+        pk_columns: {id: $revision_id }
+    ) {
         id
     }
 }
 '''
 
-CHANGE_REVISION_OWNERSHIP_MUTATION = '''
-mutation ChangeRevisionOwnership($revision_id: Int!, $user_id: String) {
-    updateComponentRevision(_set: {user_id: $user_id}, pk_columns: {id: $revision_id}) {
+ACQUIRE_REVISION_MUTATION = '''
+mutation AcquireRevision($revision_id: Int!, $user_id: String!) {
+    updateComponentRevision(
+        _set: {user_id: $user_id}, 
+        pk_columns: {id: $revision_id}
+    ) {
         id
     }
 }
 '''
 
-UPDATE_COMPONENT_META_MUTATION = '''
-mutation UpdateComponentMetadata($id: String!, $metadata: jsonb!) {
-    updateComponent(_set: {metadata: $metadata}, pk_columns: {id: $id}) {
+DELETE_REVISION_MUTATION = '''
+mutation DeleteRevision($id: Int!) {
+    deleteComponentRevision(id: $id) {
         id
-    }
-}
-'''
-
-FIND_COMPONENT_QUERY = '''
-query FindComponent(
-    $id: String!, 
-    $num_revisions: Int, 
-    $max_revision_version: Int
-) {
-    getComponent(id: $id) {
-        id
-        tags
-        fields
-        metadata
-        revisions (
-            order_by: {id: desc}, 
-            limit: $num_revisions,
-            where: {
-                version: {_lte: $max_revision_version}
-            }
-        ) {
-            id
-            version
-            comment
-            published
-            user {
-                id
-                email
-            }
-        }
     }
 }
 '''

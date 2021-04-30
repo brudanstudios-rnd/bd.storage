@@ -78,11 +78,7 @@ class RevisionPublishError(ComponentError):
     pass
 
 
-class ReleasePublishError(ComponentError):
-    pass
-
-
-class ChangeOwnershipError(ComponentError):
+class RevisionAcquireError(ComponentError):
     pass
 
 
@@ -90,23 +86,13 @@ class RevisionCreateError(ComponentError):
     pass
 
 
-class ReleaseCreateError(ComponentError):
+class UserRequestError(ComponentError):
     pass
 
 
-class UserRequestError(ComponentError):
+class RevisionsGetError(ComponentError):
     pass
 
 
 class RevisionOwnershipError(ComponentError):
     pass
-
-
-class ComponentCreateError(ComponentError):
-    pass
-
-
-class ComponentFindError(ComponentError):
-    pass
-
-

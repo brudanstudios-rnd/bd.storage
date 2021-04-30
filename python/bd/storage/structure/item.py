@@ -73,7 +73,9 @@ class BaseSchemaItem(object):
                 except:
                     reraise(
                         SchemaConfigError,
-                        'Failed to parse schema config file: {}. {}'.format(cfg_path, sys.exc_info()[1]),
+                        SchemaConfigError('Failed to parse schema config file: {}. {}'.format(
+                            cfg_path, sys.exc_info()[1])
+                        ),
                         sys.exc_info()[2]
                     )
 

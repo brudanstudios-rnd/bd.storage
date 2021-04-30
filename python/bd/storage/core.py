@@ -163,6 +163,10 @@ class Storage(object):
     def project(self):
         return self._pool.project
 
+    @property
+    def schema(self):
+        return self._schema
+
     def get_item(self, tags):
         if not self.is_matching(tags):
             return
