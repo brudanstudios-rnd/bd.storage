@@ -83,6 +83,19 @@ class Revision(object):
 
         return meta_item.get_storage_item(fields)
 
+    def remove(self):
+        try:
+            revision_id = getattr(self, 'id')
+
+            session = Session()
+
+            session.execute(
+                queries.REMOVE_REVISION_MUTATION,
+                {"id": revision_id}
+            )
+        except Exception as e:
+            reraise(RevisionRemoveError, RevisionRemoveError(e), sys.exc_info()[2])
+
     def _checkout(self, published_item, storage_pool):
         tags = TagsEdit(published_item.tags)
         tags.add_tag('_checkout_')
@@ -169,6 +182,17 @@ class Component(object):
                 user_data['email']
             )
         )
+
+    def remove(self):
+        try:
+            session = Session()
+
+            session.execute(
+                queries.REMOVE_COMPONENT_MUTATION,
+                {"id": self.id}
+            )
+        except Exception as e:
+            reraise(ComponentRemoveError, ComponentRemoveError(e), sys.exc_info()[2])
 
     def __str__(self):
         return self.__repr__()

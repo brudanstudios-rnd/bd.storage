@@ -74,6 +74,10 @@ class ComponentError(StorageError):
     pass
 
 
+class ComponentRemoveError(ComponentError):
+    pass
+
+
 class RevisionPublishError(ComponentError):
     pass
 
@@ -95,4 +99,8 @@ class RevisionsGetError(ComponentError):
 
 
 class RevisionOwnershipError(ComponentError):
+    pass
+
+
+class RevisionRemoveError(ComponentError):
     pass

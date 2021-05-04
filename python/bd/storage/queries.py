@@ -17,8 +17,8 @@ query GetRevisions($id: String!, $limit: Int = 10) {
 }
 '''
 
-DELETE_COMPONENT_MUTATION = '''
-mutation DeleteComponent($id: String!) {
+REMOVE_COMPONENT_MUTATION = '''
+mutation RemoveComponent($id: String!) {
     delete_component_by_pk(id: $id) {
         id
     }
@@ -83,8 +83,8 @@ mutation AcquireRevision($revision_id: Int!, $user_id: String!) {
 }
 '''
 
-DELETE_REVISION_MUTATION = '''
-mutation DeleteRevision($id: Int!) {
+REMOVE_REVISION_MUTATION = '''
+mutation RemoveRevision($id: Int!) {
     delete_component_revisions_by_pk(id: $id) {
         id
     }
