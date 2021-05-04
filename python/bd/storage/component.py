@@ -125,7 +125,7 @@ class Component(object):
                     'id': self.id,
                     'limit': limit
                 }
-            )['getComponentRevisions']
+            )['component_revisions']
         except Exception as e:
             reraise(RevisionsGetError, RevisionsGetError(e), sys.exc_info()[2])
 
@@ -148,7 +148,7 @@ class Component(object):
                     "tags": self.tags,
                     "fields": self.fields
                 }
-            )['createComponentRevision']
+            )['insert_component_revisions_one']
         except Exception as e:
             reraise(RevisionCreateError, RevisionCreateError(e), sys.exc_info()[2])
 

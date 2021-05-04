@@ -1,6 +1,6 @@
 GET_REVISIONS_QUERY = '''
 query GetRevisions($id: String!, $limit: Int = 10) {
-    getComponentRevisions(
+    component_revisions(
         where: {
             component_id: {_eq: $id}
         }, 
@@ -19,7 +19,7 @@ query GetRevisions($id: String!, $limit: Int = 10) {
 
 DELETE_COMPONENT_MUTATION = '''
 mutation DeleteComponent($id: String!) {
-    deleteComponent(id: $id) {
+    delete_component_by_pk(id: $id) {
         id
     }
 }
@@ -28,7 +28,7 @@ mutation DeleteComponent($id: String!) {
 # this query upserts
 CREATE_REVISION_MUTATION = '''
 mutation CreateRevision($id: String!, $tags: jsonb!, $fields: jsonb!) {
-    createComponentRevision(
+    insert_component_revisions_one(
         object: {
             published: false,
             component: {
@@ -63,7 +63,7 @@ mutation CreateRevision($id: String!, $tags: jsonb!, $fields: jsonb!) {
 
 PUBLISH_REVISION_MUTATION = '''
 mutation PublishRevision($revision_id: Int!, $comment: String) {
-    updateComponentRevision(
+    update_component_revisions_by_pk(
         _set: {published: true, comment: $comment}, 
         pk_columns: {id: $revision_id }
     ) {
@@ -74,7 +74,7 @@ mutation PublishRevision($revision_id: Int!, $comment: String) {
 
 ACQUIRE_REVISION_MUTATION = '''
 mutation AcquireRevision($revision_id: Int!, $user_id: String!) {
-    updateComponentRevision(
+    update_component_revisions_by_pk(
         _set: {user_id: $user_id}, 
         pk_columns: {id: $revision_id}
     ) {
@@ -85,7 +85,7 @@ mutation AcquireRevision($revision_id: Int!, $user_id: String!) {
 
 DELETE_REVISION_MUTATION = '''
 mutation DeleteRevision($id: Int!) {
-    deleteComponentRevision(id: $id) {
+    delete_component_revisions_by_pk(id: $id) {
         id
     }
 }
