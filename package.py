@@ -17,7 +17,7 @@ def requires():
         'bd.hooks',
         'boto3-1.17.20+',
         'parse-1.19.0+',
-        'PyYAML-5.4.1+',
+        'pyyaml-5.4.1+',
         'schema',
         'six',
         'contextlib2'
