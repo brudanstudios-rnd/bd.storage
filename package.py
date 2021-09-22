@@ -1,6 +1,6 @@
 name = 'bd.storage'
 
-version = '0.1.5'
+version = '0.1.8'
 
 build_command = 'python -m rezutil build {root} --ignore .env'
 private_build_requires = ['rezutil']
@@ -15,12 +15,9 @@ def requires():
     requirements = [
         'bd.api',
         'bd.hooks',
-        'boto3-1.17.20+',
-        'parse-1.19.0+',
         'pyyaml-5.4.1+',
-        'schema',
-        'six',
-        'contextlib2'
+        'schema-0.7.1',
+        'six'
     ]
 
     if 'python' not in request or request.python.startswith('python-2'):

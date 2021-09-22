@@ -2,9 +2,10 @@ import sys
 import string
 import logging
 
-import parse
 
 from six import reraise
+
+from ._vendor import parse
 
 from .errors import *
 
@@ -58,6 +59,7 @@ class FieldFormatter(object):
                 self._type_spec_mapping[field_name] = field_data['type']
 
     def parse(self, input_str, format_str):
+
         try:
             typed_format = _formatter.format(
                 format_str, 

@@ -631,6 +631,7 @@ class StoragePool(object):
         self._storages = []
         self._pool_config = config
         self._project = self._pool_config['project']
+        self._path_to_item_cache = {}
         self._init_storages()
 
     @property
@@ -640,6 +641,9 @@ class StoragePool(object):
     @property
     def storages(self):
         return self._storages
+
+    def clear_cache(self):
+        self._path_to_item_cache.clear()
 
     def get_storage_item_from_filename(self, filename):
         filename = putils.normpath(filename)
@@ -651,6 +655,9 @@ class StoragePool(object):
                 'Project name \'{}\' not found in path \'{}\''.format(self._project, filename)
             )
 
+        if filename in self._path_to_item_cache:
+            return self._path_to_item_cache[filename]
+
         for storage in self._storages:
 
             tags, fields = storage.get_data_from_uid(uid)
@@ -659,7 +666,9 @@ class StoragePool(object):
 
             meta_item = self.get_item(tags)
             if meta_item:
-                return meta_item.get_storage_item(fields)
+                storage_item = meta_item.get_storage_item(fields)
+                self._path_to_item_cache[filename] = storage_item
+                return storage_item
 
     def get_item(self, tags):
         if isinstance(tags, TagsMixin):
