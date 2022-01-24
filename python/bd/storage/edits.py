@@ -37,6 +37,7 @@ class TagsEdit(TagsMixin):
 
     def remove_extra_tags(self):
         self._tags = list(filter(lambda tag: not tag.startswith('_'), self._tags))
+        return self
 
     def add_tag(self, tag):
         if tag not in self._tags:
@@ -68,6 +69,10 @@ class TagsEdit(TagsMixin):
             self.replace_tag(old_tag, new_tag)
         return self
 
+    def remove_all_tags(self):
+        self._tags = []
+        return self
+
 
 class FieldsEdit(FieldsMixin):
 
@@ -93,3 +98,7 @@ class FieldsEdit(FieldsMixin):
             if value:
                 popped_fields[name] = value
         return popped_fields
+
+    def remove_all_fields(self):
+        self._fields = {}
+        return self

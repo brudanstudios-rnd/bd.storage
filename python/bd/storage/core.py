@@ -1,4 +1,4 @@
-__all__ = ['StoragePool', 'MetaItem', 'StorageItem']
+__all__ = ['StoragePool', 'MetaItem', 'StorageItem', 'Identifier']
 
 import os
 import sys
@@ -6,13 +6,15 @@ import logging
 import getpass
 import json
 import datetime
+import hashlib
+import threading
 
 import bd.hooks as bd_hooks
 
 from six import reraise
 
 from .accessor import FileSystemAccessor
-from .edits import MetadataEdit, FieldsEdit
+from .edits import MetadataEdit, TagsEdit, FieldsEdit
 from .formatter import FieldFormatter
 from .mixins import TagsMixin, FieldsMixin, ChainItemMixin
 from .structure import Schema
@@ -21,6 +23,8 @@ from . import utils
 from .utils import putils, json_encoder, load_hooks
 from .errors import *
 from .enums import ItemType, ItemTypePrimaryFields
+
+from ._vendor.cachetools import cachedmethod, LRUCache
 
 log = logging.getLogger(__name__)
 
@@ -168,7 +172,7 @@ class Storage(object):
         return self._schema
 
     def get_item(self, tags):
-        if not self.is_matching(tags):
+        if not self._is_matching(tags):
             return
 
         schema_item = self._schema.get_item(tags)
@@ -177,12 +181,13 @@ class Storage(object):
 
         return MetaItem(tags, schema_item, self)
 
-    def get_data_from_uid(self, uid):
+    def get_identifier_from_rpath(self, rpath):
         max_num_fields = -1
         result_tags = result_fields = None
+
         for tags, item in self._schema.get_items().items():
 
-            fields = self._formatter.parse(uid, item.template)
+            fields = self._formatter.parse(rpath, item.template)
             if not fields:
                 continue
 
@@ -193,17 +198,19 @@ class Storage(object):
                 max_num_fields = num_fields
 
         if not (result_tags and result_fields):
-            return None, None
+            return
 
-        if not self.is_matching(result_tags):
-            return None, None
+        if not self._is_matching(result_tags):
+            return
+
+        identifier = Identifier(result_tags, result_fields)
 
         if self._adapter:
-            self._adapter.from_current(result_fields)
+            identifier = self._adapter.output(identifier)
 
-        return result_tags, result_fields
+        return identifier
 
-    def is_matching(self, tags):
+    def _is_matching(self, tags):
         if not self._tag_mask:
             return True
 
@@ -214,6 +221,32 @@ class Storage(object):
 
     def __repr__(self):
         return "Storage(name='{}')".format(self._name)
+
+
+class Identifier(TagsEdit, FieldsEdit):
+
+    def __init__(self, tags=None, fields=None):
+        TagsEdit.__init__(self, tags)
+        FieldsEdit.__init__(self, fields)
+
+    def hash(self):
+        return hashlib.md5(
+            str(
+                tuple(sorted(self.tags)) + tuple(sorted(self.fields.items()))
+            ).encode('UTF8')
+        ).hexdigest()
+
+    def copy(self):
+        return Identifier(self.tags, self.fields)
+
+    def pure(self):
+        return self.copy().remove_extra_tags().remove_extra_fields()
+
+    def __str__(self):
+        return 'Identifier(tags={}, fields={})'.format(self.tags, self.fields)
+
+    def __repr__(self):
+        return self.__str__()
 
 
 class MetaItem(TagsMixin, ChainItemMixin):
@@ -278,17 +311,17 @@ class MetaItem(TagsMixin, ChainItemMixin):
 
         for meta_item in downstream_meta_item.iter_chain():
 
-            curr_fields = fields
+            identifier = Identifier(self.tags, fields)
             if meta_item._adapter:
-                curr_fields = meta_item._adapter.to_current(curr_fields.copy())
+                identifier = meta_item._adapter.input(identifier)
 
-            uid = meta_item._formatter.format(meta_item.template, **curr_fields)
-            if not uid:
+            rpath = meta_item._formatter.format(meta_item.template, **identifier.fields)
+            if not rpath:
                 continue
 
             curr_storage_item = StorageItem(
-                uid,
-                curr_fields,
+                rpath,
+                identifier.fields,
                 meta_item
             )
 
@@ -302,7 +335,7 @@ class MetaItem(TagsMixin, ChainItemMixin):
 
         return target_storage_item
 
-    def build_uid(self, fields):
+    def build_rpath(self, fields):
         if isinstance(fields, FieldsEdit):
             fields = fields.fields
 
@@ -310,7 +343,8 @@ class MetaItem(TagsMixin, ChainItemMixin):
             fields['project'] = self.project
 
         if self._adapter:
-            fields = self._adapter.to_current(fields.copy())
+            identifier = Identifier(self.tags, fields)
+            fields = self._adapter.output(identifier).fields
 
         return self._formatter.format(self._template, **fields)
 
@@ -325,17 +359,20 @@ class MetaItem(TagsMixin, ChainItemMixin):
 
 class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
 
-    def __init__(self, uid, fields, meta_item):
+    def __init__(self, rpath, fields, meta_item):
         TagsMixin.__init__(self, meta_item.tags)
         FieldsMixin.__init__(self, fields)
         MetadataEdit.__init__(self)
         ChainItemMixin.__init__(self)
-        self._uid = uid
+        self._rpath = rpath
         self._meta_item = meta_item
+        self.set_metadata('tags', self.tags)
+        self.set_metadata('fields', self.fields)
+        self.set_metadata('user', getpass.getuser())
 
     @property
-    def uid(self):
-        return self._uid
+    def rpath(self):
+        return self._rpath
 
     @property
     def type(self):
@@ -353,10 +390,13 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
     def meta_item(self):
         return self._meta_item
 
+    def get_identifier(self):
+        return Identifier(self.tags, self.fields)
+
     def exists(self, check_upstream=False):
         try:
             exists = False
-            if self.accessor.exists(self._uid):
+            if self.accessor.exists(self._rpath):
                 exists = True
             elif check_upstream:
                 if self.next_item:
@@ -370,13 +410,13 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
             )
 
     def get_filesystem_path(self):
-        return self.accessor.get_filesystem_path(self._uid)
+        return self.accessor.get_filesystem_path(self._rpath)
 
     def read(self, current_item_only=False, upstream=True, with_metadata=False):
 
         def _read_self():
             try:
-                data = self.accessor.read(self._uid)
+                data = self.accessor.read(self._rpath)
             except:
                 reraise(
                     AccessorError,
@@ -419,25 +459,22 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
             return data
 
     def _dump_metadata(self):
-        aux_data = {
-            'date': datetime.datetime.now(),
-            'user': getpass.getuser(),
-            'tags': self.tags,
-            'fields': self.fields
+        dump_data = {
+            'date': datetime.datetime.now()
         }
 
         if self._metadata:
             metadata = utils.remove_extra_fields(self._metadata)
             if metadata:
-                metadata.update(aux_data)
+                dump_data.update(metadata)
 
         try:
-            json_data = json.dumps(aux_data, indent=2, default=json_encoder)
+            json_data = json.dumps(dump_data, indent=2, default=json_encoder)
         except TypeError as e:
             raise MetadataSerializationError(e)
 
         try:
-            self.accessor.write(self._uid + '.meta', json_data)
+            self.accessor.write(self._rpath + '.meta', json_data)
         except:
             reraise(
                 AccessorError,
@@ -451,15 +488,15 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
     def _load_metadata(self):
         data = {}
 
-        metadata_uid = self._uid + '.meta'
-        if not self.accessor.exists(metadata_uid):
-            metadata_uid = self._uid + '.txt'
-            if not self.accessor.exists(metadata_uid):
+        metadata_rpath = self._rpath + '.meta'
+        if not self.accessor.exists(metadata_rpath):
+            metadata_rpath = self._rpath + '.txt'
+            if not self.accessor.exists(metadata_rpath):
                 return
 
-        content = self.accessor.read(metadata_uid)
+        content = self.accessor.read(metadata_rpath)
 
-        if metadata_uid.endswith('.meta'):
+        if metadata_rpath.endswith('.meta'):
             data = json.loads(content)
             data["date"] = datetime.datetime.strptime(data['date'], "%m/%d/%Y %H:%M:%S")
             data.pop('tags', None)
@@ -507,7 +544,7 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
             )
 
             try:
-                self.accessor.write(self._uid, data)
+                self.accessor.write(self._rpath, data)
             except:
                 reraise(
                     AccessorError,
@@ -547,6 +584,14 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
         if not downstream_item or downstream_item.exists():
             return
 
+        try:
+            bd_hooks.execute(
+                'bd.storage.on_item_pull',
+                self
+            ).all()
+        except:
+            pass
+
         data = self.read(upstream=False, with_metadata=with_metadata)
         if data is None:
             raise ItemLoadingError('There is no data available for item: {}'.format(self))
@@ -564,7 +609,7 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
 
     def make_directories(self):
         try:
-            self.accessor.make_dir(self._uid, True)
+            self.accessor.make_dir(self._rpath, True)
         except:
             reraise(
                 AccessorError,
@@ -579,7 +624,7 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
     def remove(self, propagate=True):
         log.debug('Removing item "{}"'.format(self))
         try:
-            self.accessor.rm(self._uid)
+            self.accessor.rm(self._rpath)
         except:
             reraise(
                 AccessorError,
@@ -600,11 +645,11 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
     def __repr__(self):
         return (
             "StorageItem(tags={}, fields={}, "
-            "uid='{}', storage='{}')"
+            "rpath='{}', storage='{}')"
         ).format(
             repr(self._tags),
             repr(self._fields),
-            self._uid,
+            self._rpath,
             self.storage.name
         )
 
@@ -631,7 +676,7 @@ class StoragePool(object):
         self._storages = []
         self._pool_config = config
         self._project = self._pool_config['project']
-        self._path_to_item_cache = {}
+        self._cache = LRUCache(maxsize=5000)
         self._init_storages()
 
     @property
@@ -642,35 +687,42 @@ class StoragePool(object):
     def storages(self):
         return self._storages
 
-    def clear_cache(self):
-        self._path_to_item_cache.clear()
-
+    @cachedmethod(lambda self: self._cache, lock=threading.RLock)
     def get_storage_item_from_filename(self, filename):
         filename = putils.normpath(filename)
 
         try:
-            uid = filename[filename.index('/{}/'.format(self._project)) + 1:]
+            rpath = filename[filename.index('/{}/'.format(self._project)) + 1:]
         except ValueError:
             raise ProjectNameNotFound(
                 'Project name \'{}\' not found in path \'{}\''.format(self._project, filename)
             )
 
-        if filename in self._path_to_item_cache:
-            return self._path_to_item_cache[filename]
-
         for storage in self._storages:
 
-            tags, fields = storage.get_data_from_uid(uid)
-            if not (tags and fields):
+            identifier = storage.get_identifier_from_rpath(rpath)
+            if not identifier:
                 continue
 
-            meta_item = self.get_item(tags)
-            if meta_item:
-                storage_item = meta_item.get_storage_item(fields)
-                self._path_to_item_cache[filename] = storage_item
+            storage_item = self.get_storage_item(identifier)
+            if storage_item:
                 return storage_item
 
+    @cachedmethod(
+        lambda self: self._cache,
+        key=lambda x: tuple(sorted(x)),
+        lock=threading.RLock
+    )
     def get_item(self, tags):
+        """
+        Find MetaItem by tags.
+
+        Args:
+            tags (TagsMixin):
+
+        Returns:
+            MetaItem:
+        """
         if isinstance(tags, TagsMixin):
             tags = tags.tags
         elif tags and not isinstance(tags, (tuple, list, set, frozenset)):
@@ -694,6 +746,21 @@ class StoragePool(object):
             prev_item = meta_item
 
         return item
+
+    def get_storage_item(self, identifier):
+        """
+        Create storage item for the provided identifier.
+
+        Args:
+            identifier (Identifier): identifier object
+
+        Returns:
+            StorageItem: storage item
+
+        """
+        meta_item = self.get_item(identifier.tags)
+        if meta_item:
+            return meta_item.get_storage_item(identifier.fields)
 
     def _init_storages(self):
         """Initialize storages from provided configuration.

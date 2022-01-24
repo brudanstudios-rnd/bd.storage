@@ -1,3 +1,21 @@
+FIND_COMPONENTS_QUERY = '''
+query FindComponents($tags: jsonb!, $fields: jsonb!, $limit: Int = 100) {
+    components(
+        where: {
+            tags: {_contains: $tags},
+            fields: {_contains: $fields}
+        }, 
+        order_by: {created_at: desc},
+        limit: $limit
+    ) {
+        id
+        tags
+        fields
+    }
+}
+'''
+
+
 GET_REVISIONS_QUERY = '''
 query GetRevisions($id: String!, $limit: Int = 10) {
     component_revisions(
@@ -12,7 +30,11 @@ query GetRevisions($id: String!, $limit: Int = 10) {
         published
         comment
         created_at
-        user_id
+        user {
+            id
+            email
+            picture
+        }
     }
 }
 '''

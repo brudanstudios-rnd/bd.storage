@@ -64,25 +64,25 @@ class FTPAccessor(BaseAccessor):
             uuid.uuid1().hex
         )
 
-    def resolve(self, uid):
+    def resolve(self, rpath):
         if not self._root:
-            return uid
-        return putils.join(self._root, uid)
+            return rpath
+        return putils.join(self._root, rpath)
 
-    def read(self, uid):
+    def read(self, rpath):
         if self._fs_accessor:
-            data = self._fs_accessor.read(uid)
+            data = self._fs_accessor.read(rpath)
         else:
             self._ensure_connected()
 
             data_buffer = BytesIO()
 
             try:
-                self._ftp.retrbinary('RETR {}'.format(uid), data_buffer.write)
+                self._ftp.retrbinary('RETR {}'.format(rpath), data_buffer.write)
             except ftplib.error_perm as e:
 
                 # if file doesn't exist
-                if e.message[:3] == '550':
+                if str(e)[:3] == '550':
                     return
 
                 raise
@@ -91,15 +91,20 @@ class FTPAccessor(BaseAccessor):
 
         return data
 
-    def write(self, uid, data):
+    def write(self, rpath, data):
         self._ensure_connected()
 
-        transit_path = self._get_transit_path(uid)
+        transit_path = self._get_transit_path(rpath)
+
+        try:
+            data = data.encode('utf-8')
+        except AttributeError:
+            pass
 
         data_buffer = BytesIO(data)
 
         try:
-            parent_dir = putils.dirname(uid)
+            parent_dir = putils.dirname(rpath)
             if not self.exists(parent_dir):
                 self.make_dir(parent_dir, recursive=True)
 
@@ -114,11 +119,11 @@ class FTPAccessor(BaseAccessor):
             except ftplib.error_perm as e:
                 # CHMODE command is not implemented
                 # if the server is running on windows
-                if e.message[:3] != '504':
+                if str(e)[:3] != '504':
                     raise
 
             # rename transit path to the final path
-            self._ftp.rename(transit_path, uid)
+            self._ftp.rename(transit_path, rpath)
         finally:
             try:
                 if self.exists(transit_path):
@@ -126,21 +131,21 @@ class FTPAccessor(BaseAccessor):
             except:
                 pass
 
-    def _is_dir(self, uid):
+    def _is_dir(self, rpath):
         pwd = self._ftp.pwd()
         try:
-            self._ftp.cwd(uid)
+            self._ftp.cwd(rpath)
             return True
         except:
             return False
         finally:
             self._ftp.cwd(pwd)
 
-    def _is_file(self, uid):
-        if not self.exists(uid):
+    def _is_file(self, rpath):
+        if not self.exists(rpath):
             return False
 
-        return not self._is_dir(uid)
+        return not self._is_dir(rpath)
 
     def _traverse(self):
         data = []
@@ -152,7 +157,7 @@ class FTPAccessor(BaseAccessor):
 
                 # we get here only if cwd command failed
                 # it fails when the path is a file
-                if e.message[:3] != '550':
+                if str(e)[:3] != '550':
                     raise
 
                 data.append(putils.join(current_dir, entry))
@@ -162,13 +167,13 @@ class FTPAccessor(BaseAccessor):
 
         return data
 
-    def list(self, uid, relative=True, recursive=True):
+    def list(self, rpath, relative=True, recursive=True):
         if self._fs_accessor:
-            return self._fs_accessor.list(uid, relative, recursive)
+            return self._fs_accessor.list(rpath, relative, recursive)
         else:
             self._ensure_connected()
 
-            initial_dir = uid.rstrip('/')
+            initial_dir = rpath.rstrip('/')
 
             self._ftp.cwd(initial_dir)
 
@@ -189,19 +194,19 @@ class FTPAccessor(BaseAccessor):
             finally:
                 self._ftp.cwd('/')
 
-    def make_dir(self, uid, recursive=False):
+    def make_dir(self, rpath, recursive=False):
         self._ensure_connected()
 
         self._ftp.cwd('/')
 
         if recursive:
-            for dir_chunk in uid.split('/'):
+            for dir_chunk in rpath.split('/'):
                 try:
                     self._ftp.cwd(dir_chunk)
                 except ftplib.error_perm as e:
 
                     # reraise any error except when directory not found
-                    if e.message[:3] != '550':
+                    if str(e)[:3] != '550':
                         raise
 
                     self._ftp.mkd(dir_chunk)
@@ -209,15 +214,15 @@ class FTPAccessor(BaseAccessor):
 
             self._ftp.cwd('/')
         else:
-            self._ftp.mkd(uid)
+            self._ftp.mkd(rpath)
 
-    def rm(self, uid):
+    def rm(self, rpath):
         self._ensure_connected()
 
-        if self._is_dir(uid):
+        if self._is_dir(rpath):
             current_dir = self._ftp.pwd()
 
-            for nested_path in self._ftp.nlst(uid):
+            for nested_path in self._ftp.nlst(rpath):
                 if putils.split(nested_path)[1] in ('.', '..'):
                     continue
 
@@ -226,7 +231,7 @@ class FTPAccessor(BaseAccessor):
                 except ftplib.error_perm as e:
 
                     # reraise any error except when directory not found
-                    if e.message[:3] != '550':
+                    if str(e)[:3] != '550':
                         raise
 
                     self._ftp.delete(nested_path)
@@ -234,29 +239,29 @@ class FTPAccessor(BaseAccessor):
                     self._ftp.cwd(current_dir)  # don't try to remove a folder we're in
                     self.rm(nested_path)
 
-            self._ftp.rmd(uid)
+            self._ftp.rmd(rpath)
 
-        elif self._is_file(uid):
-            self._ftp.delete(uid)
+        elif self._is_file(rpath):
+            self._ftp.delete(rpath)
 
-    def exists(self, uid):
+    def exists(self, rpath):
         if self._fs_accessor:
-            return self._fs_accessor.exists(uid)
+            return self._fs_accessor.exists(rpath)
         else:
             self._ensure_connected()
 
             try:
-                files = self._ftp.nlst(putils.dirname(uid))
-                return uid in files
+                files = self._ftp.nlst(putils.dirname(rpath))
+                return rpath in files
             except ftplib.error_perm as e:
 
-                if e.message[:3] != '550':
+                if str(e)[:3] != '550':
                     raise
 
                 return False
 
-    def get_filesystem_path(self, uid):
-        return self._fs_accessor.get_filesystem_path(uid) if self._fs_accessor else None
+    def get_filesystem_path(self, rpath):
+        return self._fs_accessor.get_filesystem_path(rpath) if self._fs_accessor else None
 
     def __del__(self):
         try:

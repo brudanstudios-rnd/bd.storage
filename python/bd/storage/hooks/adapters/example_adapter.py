@@ -10,11 +10,14 @@ class ExampleAdapter(BaseAdapter):
     def __init__(self):
         super(ExampleAdapter, self).__init__()
 
-    def to_current(self, fields):
-        return fields
+    def output(self, identifier):
+        return identifier
 
-    def from_current(self, fields):
-        return fields
+    def input(self, identifier):
+        return identifier
+
+    def update_current(self, identifier):
+        return identifier
 
 
 def register(registry):

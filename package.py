@@ -1,6 +1,6 @@
 name = 'bd.storage'
 
-version = '0.1.8'
+version = '0.1.9'
 
 build_command = 'python -m rezutil build {root} --ignore .env'
 private_build_requires = ['rezutil']
@@ -15,7 +15,7 @@ def requires():
     requirements = [
         'bd.api',
         'bd.hooks',
-        'pyyaml-5.4.1+',
+        'PyYAML-5.4.1+',
         'schema-0.7.1',
         'six'
     ]

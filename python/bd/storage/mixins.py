@@ -4,13 +4,14 @@ from .errors import InputError
 class TagsMixin(object):
 
     def __init__(self, tags):
-        if isinstance(tags, TagsMixin):
-            tags = tags.tags
-        elif tags and not isinstance(tags, (tuple, list, set, frozenset)):
-            raise InputError(
-                'Argument "tags" has invalid type "{}"'.format(type(tags).__name__)
-            )
-        self._tags = list(tags)
+        if tags:
+            if isinstance(tags, TagsMixin):
+                tags = tags.tags
+            elif not isinstance(tags, (tuple, list, set, frozenset)):
+                raise InputError(
+                    'Argument "tags" has invalid type "{}"'.format(type(tags).__name__)
+                )
+        self._tags = list(tags)[:] if tags else []
 
     @property
     def tags(self):

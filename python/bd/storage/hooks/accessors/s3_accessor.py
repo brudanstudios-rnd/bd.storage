@@ -37,31 +37,31 @@ class S3Accessor(BaseAccessor):
 
         self._bucket = self._s3.Bucket(bucket)
 
-    def read(self, uid):
+    def read(self, rpath):
         data_buffer = BytesIO()
         try:
-            self._bucket.download_fileobj(uid, data_buffer)
+            self._bucket.download_fileobj(rpath, data_buffer)
         except ClientError as e:
             if e.response['Error']['Code'] == '404':
                 return
 
         return data_buffer.getvalue()
 
-    def write(self, uid, data):
+    def write(self, rpath, data):
         data_buffer = BytesIO(data)
-        self._bucket.put_object(Key=uid, Body=data_buffer)
+        self._bucket.put_object(Key=rpath, Body=data_buffer)
 
-    def list(self, uid, relative=True, recursive=True):
-        if not uid.endswith('/'):
-            uid += '/'
+    def list(self, rpath, relative=True, recursive=True):
+        if not rpath.endswith('/'):
+            rpath += '/'
 
-        start_index = len(uid)
+        start_index = len(rpath)
 
         if not recursive:
             result = self._bucket.meta.client.list_objects_v2(
                 Bucket=self._bucket.name,
                 Delimiter='/',
-                Prefix=uid
+                Prefix=rpath
             )
 
             contents = []
@@ -75,20 +75,20 @@ class S3Accessor(BaseAccessor):
 
             return contents
         else:
-            return [obj.key[start_index:] if relative else obj.key for obj in self._bucket.objects.filter(Prefix=uid)]
+            return [obj.key[start_index:] if relative else obj.key for obj in self._bucket.objects.filter(Prefix=rpath)]
 
-    def make_dir(self, uid, recursive=False):
-        self._bucket.put_object(Key=uid)
+    def make_dir(self, rpath, recursive=False):
+        self._bucket.put_object(Key=rpath)
 
-    def rm(self, uid):
-        if uid.endswith('/'):
-            self._bucket.objects.filter(Prefix=uid).delete()
+    def rm(self, rpath):
+        if rpath.endswith('/'):
+            self._bucket.objects.filter(Prefix=rpath).delete()
 
-        self._bucket.Object(uid).delete()
+        self._bucket.Object(rpath).delete()
 
-    def exists(self, uid):
+    def exists(self, rpath):
         try:
-            self._bucket.Object(uid).load()
+            self._bucket.Object(rpath).load()
         except ClientError as e:
             if e.response['Error']['Code'] == '404':
                 return False
@@ -97,7 +97,7 @@ class S3Accessor(BaseAccessor):
         else:
             return True
 
-    def get_filesystem_path(self, uid):
+    def get_filesystem_path(self, rpath):
         return
 
 

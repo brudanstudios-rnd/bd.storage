@@ -1,18 +1,24 @@
+import os
 import sys
+import uuid
 import logging
+import tempfile
+from collections import namedtuple
 from contextlib import contextmanager
 
 from bd.api import Session
 
 from six import reraise
 
-from .edits import TagsEdit, FieldsEdit
+from .edits import TagsEdit
 from . import queries
-from . import utils
-from .core import StoragePool
+from .core import StoragePool, Identifier, MetaItem
 from .errors import *
 
 log = logging.getLogger(__name__)
+
+
+Transaction = namedtuple('Transaction', ['temp', 'item'])
 
 
 class Revision(object):
@@ -35,7 +41,20 @@ class Revision(object):
         if comment:
             storage_item.set_metadata('note', comment)
 
-        yield storage_item
+        transaction = Transaction(
+            os.path.join(tempfile.gettempdir(), uuid.uuid1().hex),
+            storage_item
+        )
+
+        try:
+            yield transaction
+
+            if os.path.exists(transaction.temp):
+                with open(transaction.temp, 'rb') as f:
+                    storage_item.write(f.read(), with_metadata=True)
+        finally:
+            if os.path.exists(transaction.temp):
+                os.remove(transaction.temp)
 
         try:
             Session().execute(
@@ -71,17 +90,14 @@ class Revision(object):
             if not storage_pool:
                 raise RevisionPublishError('StoragePool instance not initialized.')
 
-        tags = TagsEdit(self._component.tags)
+        identifier = self._component.identifier.copy()
+        identifier.set_field('_version_', self.version)
 
-        fields = FieldsEdit(self._component.fields).update_fields({
-            '_version_': self.version
-        })
-
-        meta_item = storage_pool.get_item(tags)
+        meta_item = storage_pool.get_item(identifier.tags)
         if checkout:
             meta_item = self._checkout(meta_item, storage_pool)
 
-        return meta_item.get_storage_item(fields)
+        return meta_item.get_storage_item(identifier.fields)
 
     def remove(self):
         try:
@@ -97,6 +113,15 @@ class Revision(object):
             reraise(RevisionRemoveError, RevisionRemoveError(e), sys.exc_info()[2])
 
     def _checkout(self, published_item, storage_pool):
+        """
+
+        Args:
+            published_item (MetaItem):
+            storage_pool (StoragePool):
+
+        Returns:
+            MetaItem:
+        """
         tags = TagsEdit(published_item.tags)
         tags.add_tag('_checkout_')
 
@@ -124,11 +149,47 @@ class Revision(object):
 
 class Component(object):
 
-    def __init__(self, tags, fields):
-        self.tags = utils.remove_extra_tags(tags)
-        self.fields = utils.remove_extra_fields(fields)
+    @classmethod
+    def find_components(cls, tags, fields, limit=100):
+        try:
+            data = Session().execute(
+                queries.FIND_COMPONENTS_QUERY,
+                {
+                    'tags': tags,
+                    'fields': fields,
+                    'limit': limit
+                }
+            )['components']
+        except Exception as e:
+            reraise(ComponentError, ComponentError(e), sys.exc_info()[2])
 
-        self.id = utils.create_id(tags, fields)
+        components = []
+
+        for cmp_data in data:
+            identifier = Identifier(cmp_data['tags'], cmp_data['fields'])
+            component = cls(identifier)
+            component._id = cmp_data['id']
+            components.append(component)
+
+        return components
+
+    def __init__(self, identifier):
+        self.identifier = identifier.pure()
+        self._id = None
+
+    @property
+    def tags(self):
+        return self.identifier.tags
+
+    @property
+    def fields(self):
+        return self.identifier.fields
+
+    @property
+    def id(self):
+        if self._id is None:
+            self._id = self.identifier.hash()
+        return self._id
 
     def revisions(self, limit=10):
         try:
@@ -151,17 +212,24 @@ class Component(object):
 
         return revisions
 
+    def latest_revision(self):
+        revisions = self.revisions(1)
+        if revisions:
+            return next(iter(revisions), None)
+
     def create_revision(self, force_ownership=False):
         try:
             session = Session()
-            data = session.execute(
+            result = session.execute(
                 queries.CREATE_REVISION_MUTATION,
                 {
                     "id": self.id,
                     "tags": self.tags,
                     "fields": self.fields
                 }
-            )['insert_component_revisions_one']
+            )
+            log.debug(result)
+            data = result['insert_component_revisions_one']
         except Exception as e:
             reraise(RevisionCreateError, RevisionCreateError(e), sys.exc_info()[2])
 

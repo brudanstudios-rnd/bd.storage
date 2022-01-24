@@ -1,5 +1,6 @@
 import re
 import sys
+import errno
 
 from six import reraise
 
@@ -55,11 +56,11 @@ class UTBase(FieldsEdit):
 
         meta_item = self._meta_item.get_upstream_item() if from_upstream else self._meta_item
 
-        uid = meta_item.build_uid(fields)
-        if not uid:
+        rpath = meta_item.build_rpath(fields)
+        if not rpath:
             return []
 
-        primary_field_values = self._get_primary_field_values(meta_item, uid)
+        primary_field_values = self._get_primary_field_values(meta_item, rpath)
 
         member_items = []
 
@@ -73,7 +74,7 @@ class UTBase(FieldsEdit):
 
         return member_items
 
-    def _get_primary_field_values(self, meta_item, uid):
+    def _get_primary_field_values(self, meta_item, rpath):
         raise NotImplementedError()
 
 
@@ -82,16 +83,21 @@ class UTItemRevision(UTBase):
     primary_field = ItemTypePrimaryFields.REVISION
     placeholder = 96969696969696
 
-    def _get_primary_field_values(self, meta_item, uid):
+    def get_latest(self, from_upstream=False):
+        storage_items = self.get_items(from_upstream)
+        if storage_items:
+            return storage_items[-1]
+
+    def _get_primary_field_values(self, meta_item, rpath):
         primary_field_values = set()
 
-        # uid parts preceding the versioned part
+        # rpath parts preceding the versioned part
         root_parts = []
         versioned_part = None
 
         placeholder_str = str(self.placeholder)
 
-        for i, uid_part in enumerate(uid.rstrip('/').split('/')):
+        for i, uid_part in enumerate(rpath.rstrip('/').split('/')):
 
             if placeholder_str in uid_part:
                 versioned_part = uid_part
@@ -108,6 +114,9 @@ class UTItemRevision(UTBase):
         try:
             uid_tails = meta_item.accessor.list(uid_root, recursive=False)
         except Exception as e:
+            if isinstance(e, OSError) and e.errno == errno.ENOENT:
+                return []
+
             reraise(AccessorError, AccessorError(e), sys.exc_info()[2])
 
         for uid_tail in sorted(uid_tails):
@@ -127,14 +136,16 @@ class UTItemSequence(UTItemRevision):
 class UTItemCollection(UTBase):
     primary_field = ItemTypePrimaryFields.COLLECTION
 
-    def _get_primary_field_values(self, meta_item, uid):
+    def _get_primary_field_values(self, meta_item, rpath):
         try:
-            relative_suffix_uids = meta_item.accessor.list(uid)
+            relative_suffix_rpaths = meta_item.accessor.list(rpath)
         except Exception as e:
             reraise(AccessorError, AccessorError(e), sys.exc_info()[2])
 
-        suffixes = set()
-        for relative_suffix_uid in relative_suffix_uids:
-            suffixes.add(relative_suffix_uid)
+        primary_field_values = set()
+        for relative_suffix_rpath in relative_suffix_rpaths:
+            primary_field_values.add(relative_suffix_rpath)
 
-        return list(suffixes)
+        primary_field_values = list(primary_field_values)
+        primary_field_values.sort()
+        return primary_field_values

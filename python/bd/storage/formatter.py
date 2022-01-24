@@ -1,11 +1,12 @@
 import sys
 import string
 import logging
-
+import threading
 
 from six import reraise
 
 from ._vendor import parse
+from ._vendor.cachetools import cachedmethod, LRUCache
 
 from .errors import *
 
@@ -21,6 +22,10 @@ _type_conversions = {
 }
 
 
+def _dummy_func(x):
+    return x
+
+
 class FieldFormatter(object):
 
     class SafeDict(dict):
@@ -34,6 +39,7 @@ class FieldFormatter(object):
         self._defaults_spec_mapping = {}
 
         self._custom_type_parsers = {}
+        self._cache = LRUCache(maxsize=5000)
 
         self._ensure_extra_fields(field_formatting_config)
 
@@ -58,6 +64,7 @@ class FieldFormatter(object):
             if 'type' in field_data:
                 self._type_spec_mapping[field_name] = field_data['type']
 
+    @cachedmethod(lambda self: self._cache, lock=threading.RLock)
     def parse(self, input_str, format_str):
 
         try:

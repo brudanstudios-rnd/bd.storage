@@ -20,47 +20,47 @@ class BaseAccessor(object):
     def root(self):
         return self._root
 
-    def resolve(self, uid):
-        return uid
+    def resolve(self, rpath):
+        return rpath
 
-    def convert_filename_to_uid(self, filename):
+    def convert_filename_to_rpath(self, filename):
         if not self._root:
             return
 
         if filename.startswith(self._root):
             return filename[len(self._root):]
 
-    def read(self, uid):
+    def read(self, rpath):
         raise NotImplementedError()
 
-    def write(self, uid, data):
+    def write(self, rpath, data):
         raise NotImplementedError()
 
-    def make_dir(self, uid, recursive=False):
+    def make_dir(self, rpath, recursive=False):
         raise NotImplementedError()
 
-    def exists(self, uid):
+    def exists(self, rpath):
         raise NotImplementedError()
 
-    def list(self, uid, relative=False, recursive=True):
+    def list(self, rpath, relative=False, recursive=True):
         raise NotImplementedError()
 
-    def rm(self, uid):
+    def rm(self, rpath):
         raise NotImplementedError()
 
-    def get_filesystem_path(self, uid):
+    def get_filesystem_path(self, rpath):
         return
 
 
 class FileSystemAccessor(BaseAccessor):
 
-    def resolve(self, uid):
+    def resolve(self, rpath):
         if not self._root:
-            return uid
-        return putils.join(self._root, uid)
+            return rpath
+        return putils.join(self._root, rpath)
 
-    def read(self, uid):
-        filename = self.resolve(uid)
+    def read(self, rpath):
+        filename = self.resolve(rpath)
         if not putils.exists(filename):
             return
 
@@ -69,11 +69,11 @@ class FileSystemAccessor(BaseAccessor):
 
         return data
 
-    def write(self, uid, data):
+    def write(self, rpath, data):
         if type(data) is str:
             data = b(data)
 
-        filename = self.resolve(uid)
+        filename = self.resolve(rpath)
         try:
             os.makedirs(putils.dirname(filename))
         except OSError as e:
@@ -96,8 +96,8 @@ class FileSystemAccessor(BaseAccessor):
 
             reraise(*exc_info)
 
-    def list(self, uid, relative=True, recursive=True):
-        initial_dir = self.resolve(uid).rstrip('/')
+    def list(self, rpath, relative=True, recursive=True):
+        initial_dir = self.resolve(rpath).rstrip('/')
         if not putils.exists(initial_dir):
             raise OSError(errno.ENOENT, 'No such directory: "{}"'.format(initial_dir))
 
@@ -117,8 +117,8 @@ class FileSystemAccessor(BaseAccessor):
 
         return paths
 
-    def make_dir(self, uid, recursive=False):
-        dirname = self.resolve(uid)
+    def make_dir(self, rpath, recursive=False):
+        dirname = self.resolve(rpath)
         if recursive:
             try:
                 os.makedirs(dirname)
@@ -128,16 +128,16 @@ class FileSystemAccessor(BaseAccessor):
         else:
             os.mkdir(dirname)
 
-    def rm(self, uid):
-        path = self.resolve(uid)
+    def rm(self, rpath):
+        path = self.resolve(rpath)
         if putils.isdir(path):
             shutil.rmtree(path, ignore_errors=True)
         elif putils.isfile(path):
             os.unlink(path)
 
-    def exists(self, uid):
-        return putils.exists(self.resolve(uid))
+    def exists(self, rpath):
+        return putils.exists(self.resolve(rpath))
 
-    def get_filesystem_path(self, uid):
-        return self.resolve(uid)
+    def get_filesystem_path(self, rpath):
+        return self.resolve(rpath)
 

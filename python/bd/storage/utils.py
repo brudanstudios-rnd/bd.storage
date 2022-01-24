@@ -6,8 +6,10 @@ import posixpath
 
 from bd import hooks as bd_hooks
 
+from .edits import FieldsEdit, TagsEdit
 
-def create_id(tags, fields):
+
+def create_uid(tags, fields):
     return hashlib.md5(
         str(
             tuple(sorted(tags)) + tuple(sorted(fields.items()))
@@ -16,11 +18,11 @@ def create_id(tags, fields):
 
 
 def remove_extra_fields(fields):
-    return dict(filter(lambda x: not x[0].startswith('_'), fields.items()))
+    return FieldsEdit(fields).remove_extra_fields().fields
 
 
 def remove_extra_tags(tags):
-    return list(filter(lambda tag: not tag.startswith('_'), tags))
+    return TagsEdit(tags).remove_extra_tags().tags
 
 
 def parse_mask(mask):
