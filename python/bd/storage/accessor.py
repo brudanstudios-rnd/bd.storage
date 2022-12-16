@@ -15,7 +15,7 @@ log = logging.getLogger(__name__)
 
 class BaseAccessor(object):
     def __init__(self, root=None):
-        self._root = putils.normpath(root) + '/' if root else None
+        self._root = putils.normpath(root) + "/" if root else None
 
     def root(self):
         return self._root
@@ -28,7 +28,7 @@ class BaseAccessor(object):
             return
 
         if filename.startswith(self._root):
-            return filename[len(self._root):]
+            return filename[len(self._root) :]
 
     def read(self, rpath):
         raise NotImplementedError()
@@ -53,7 +53,6 @@ class BaseAccessor(object):
 
 
 class FileSystemAccessor(BaseAccessor):
-
     def resolve(self, rpath):
         if not self._root:
             return rpath
@@ -64,7 +63,7 @@ class FileSystemAccessor(BaseAccessor):
         if not putils.exists(filename):
             return
 
-        with open(filename, 'rb') as f:
+        with open(filename, "rb") as f:
             data = f.read()
 
         return data
@@ -80,9 +79,9 @@ class FileSystemAccessor(BaseAccessor):
             if e.errno != errno.EEXIST:
                 raise
 
-        tmp_filename = '{}__{}'.format(filename, uuid.uuid4().hex)
+        tmp_filename = "{}__{}".format(filename, uuid.uuid4().hex)
         try:
-            with open(tmp_filename, 'wb') as f:
+            with open(tmp_filename, "wb") as f:
                 f.write(data)
             os.rename(tmp_filename, filename)
         except:
@@ -92,12 +91,14 @@ class FileSystemAccessor(BaseAccessor):
                 try:
                     os.remove(tmp_filename)
                 except IOError:
-                    log.warning('Unable to remove temporary file "{}"'.format(tmp_filename))
+                    log.warning(
+                        'Unable to remove temporary file "{}"'.format(tmp_filename)
+                    )
 
             reraise(*exc_info)
 
     def list(self, rpath, relative=True, recursive=True):
-        initial_dir = self.resolve(rpath).rstrip('/')
+        initial_dir = self.resolve(rpath).rstrip("/")
         if not putils.exists(initial_dir):
             raise OSError(errno.ENOENT, 'No such directory: "{}"'.format(initial_dir))
 
@@ -107,7 +108,7 @@ class FileSystemAccessor(BaseAccessor):
 
             dirname = root
             if relative:
-                dirname = root[start_index + 1:]
+                dirname = root[start_index + 1 :]
 
             paths.extend([putils.join(dirname, x) for x in files])
 
@@ -140,4 +141,3 @@ class FileSystemAccessor(BaseAccessor):
 
     def get_filesystem_path(self, rpath):
         return self.resolve(rpath)
-

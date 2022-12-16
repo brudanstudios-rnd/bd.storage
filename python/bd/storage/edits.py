@@ -2,7 +2,6 @@ from .mixins import TagsMixin, FieldsMixin
 
 
 class MetadataEdit(object):
-
     def __init__(self):
         self._metadata = None
 
@@ -34,9 +33,8 @@ class MetadataEdit(object):
 
 
 class TagsEdit(TagsMixin):
-
     def remove_extra_tags(self):
-        self._tags = list(filter(lambda tag: not tag.startswith('_'), self._tags))
+        self._tags = list(filter(lambda tag: not tag.startswith("_"), self._tags))
         return self
 
     def add_tag(self, tag):
@@ -75,9 +73,10 @@ class TagsEdit(TagsMixin):
 
 
 class FieldsEdit(FieldsMixin):
-
     def remove_extra_fields(self):
-        self._fields = dict(filter(lambda x: not x[0].startswith('_'), self._fields.items()))
+        self._fields = dict(
+            filter(lambda x: not x[0].startswith("_"), self._fields.items())
+        )
         return self
 
     def set_field(self, name, value):

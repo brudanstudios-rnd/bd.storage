@@ -68,39 +68,3 @@ class AdapterError(StorageError):
 
 class AdapterCreationError(AdapterError):
     pass
-
-
-class ComponentError(StorageError):
-    pass
-
-
-class ComponentRemoveError(ComponentError):
-    pass
-
-
-class RevisionPublishError(ComponentError):
-    pass
-
-
-class RevisionAcquireError(ComponentError):
-    pass
-
-
-class RevisionCreateError(ComponentError):
-    pass
-
-
-class UserRequestError(ComponentError):
-    pass
-
-
-class RevisionsGetError(ComponentError):
-    pass
-
-
-class RevisionOwnershipError(ComponentError):
-    pass
-
-
-class RevisionRemoveError(ComponentError):
-    pass

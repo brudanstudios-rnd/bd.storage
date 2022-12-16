@@ -32,7 +32,7 @@ class Schema(object):
 
                 for filename in filenames:
 
-                    if not filename.endswith('.yml'):
+                    if not filename.endswith(".yml"):
                         continue
 
                     # skip .yml files which names match
@@ -43,8 +43,7 @@ class Schema(object):
                         continue
 
                     schema_anchor = SchemaAnchor.create(
-                        schema_id=self._schema_dir,
-                        path=putils.join(root, filename)
+                        schema_id=self._schema_dir, path=putils.join(root, filename)
                     )
 
                     tags = schema_anchor.tags

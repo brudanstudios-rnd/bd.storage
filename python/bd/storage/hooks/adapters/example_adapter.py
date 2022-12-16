@@ -6,7 +6,6 @@ log = logging.getLogger(__name__)
 
 
 class ExampleAdapter(BaseAdapter):
-
     def __init__(self):
         super(ExampleAdapter, self).__init__()
 
@@ -21,5 +20,5 @@ class ExampleAdapter(BaseAdapter):
 
 
 def register(registry):
-    # registry.add_hook('example-adapter', ExampleAdapter)
+    # registry.add_hook('bd.storage.adapter.example', ExampleAdapter)
     pass

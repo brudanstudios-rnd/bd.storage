@@ -2,7 +2,6 @@ from .errors import InputError
 
 
 class TagsMixin(object):
-
     def __init__(self, tags):
         if tags:
             if isinstance(tags, TagsMixin):
@@ -19,11 +18,11 @@ class TagsMixin(object):
 
     @property
     def common_tags(self):
-        return [tag for tag in self._tags if not tag.startswith('_')]
+        return [tag for tag in self._tags if not tag.startswith("_")]
 
     @property
     def extra_tags(self):
-        return [tag for tag in self._tags if tag.startswith('_')]
+        return [tag for tag in self._tags if tag.startswith("_")]
 
     def __str__(self):
         return self.__repr__()
@@ -33,14 +32,15 @@ class TagsMixin(object):
 
 
 class FieldsMixin(object):
-
     def __init__(self, fields=None):
         if fields:
             if isinstance(fields, FieldsMixin):
                 fields = fields.fields
             elif not isinstance(fields, dict):
                 raise InputError(
-                    'Argument "fields" has invalid type "{}"'.format(type(fields).__name__)
+                    'Argument "fields" has invalid type "{}"'.format(
+                        type(fields).__name__
+                    )
                 )
         self._fields = fields.copy() if fields else {}
 
@@ -50,11 +50,17 @@ class FieldsMixin(object):
 
     @property
     def common_fields(self):
-        return {name: value for name, value in self._fields.items() if not name.startswith('_')}
+        return {
+            name: value
+            for name, value in self._fields.items()
+            if not name.startswith("_")
+        }
 
     @property
     def extra_fields(self):
-        return {name: value for name, value in self._fields.items() if name.startswith('_')}
+        return {
+            name: value for name, value in self._fields.items() if name.startswith("_")
+        }
 
     def get_field(self, name):
         return self._fields.get(name)
@@ -67,7 +73,6 @@ class FieldsMixin(object):
 
 
 class ChainItemMixin(object):
-
     def __init__(self):
         self.next_item = None
         self.prev_item = None

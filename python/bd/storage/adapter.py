@@ -1,5 +1,4 @@
 class BaseAdapter(object):
-
     def output(self, identifier):
         raise NotImplementedError()
 

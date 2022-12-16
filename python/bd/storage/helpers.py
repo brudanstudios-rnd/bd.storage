@@ -14,7 +14,7 @@ from .enums import ItemTypePrimaryFields
 class UTBase(FieldsEdit):
 
     primary_field = None
-    placeholder = ''
+    placeholder = ""
 
     def __init__(self, item, fields=None):
         if isinstance(item, StorageItem):
@@ -26,7 +26,7 @@ class UTBase(FieldsEdit):
             if not fields:
                 raise InputError(
                     'Argument "fields" is mandatory when '
-                    'using MetaItem as the first argument.'
+                    "using MetaItem as the first argument."
                 )
 
         super(UTBase, self).__init__(fields)
@@ -52,9 +52,13 @@ class UTBase(FieldsEdit):
 
     def get_items(self, from_upstream=False):
         fields = FieldsEdit(self.fields)
-        fields.set_field(self.primary_field, self.placeholder)      # adding just to detect it later
+        fields.set_field(
+            self.primary_field, self.placeholder
+        )  # adding just to detect it later
 
-        meta_item = self._meta_item.get_upstream_item() if from_upstream else self._meta_item
+        meta_item = (
+            self._meta_item.get_upstream_item() if from_upstream else self._meta_item
+        )
 
         rpath = meta_item.build_rpath(fields)
         if not rpath:
@@ -97,7 +101,7 @@ class UTItemRevision(UTBase):
 
         placeholder_str = str(self.placeholder)
 
-        for i, uid_part in enumerate(rpath.rstrip('/').split('/')):
+        for i, uid_part in enumerate(rpath.rstrip("/").split("/")):
 
             if placeholder_str in uid_part:
                 versioned_part = uid_part
@@ -109,7 +113,7 @@ class UTItemRevision(UTBase):
             return [1]
 
         uid_root = putils.join(*root_parts)
-        uid_tail_pattern = re.escape(versioned_part).replace(placeholder_str, '(\d+)')
+        uid_tail_pattern = re.escape(versioned_part).replace(placeholder_str, "(\d+)")
 
         try:
             uid_tails = meta_item.accessor.list(uid_root, recursive=False)

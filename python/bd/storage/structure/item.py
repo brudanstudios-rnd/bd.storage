@@ -47,9 +47,7 @@ class BaseSchemaItem(object):
         self._cached_template = None
         self._cached_config = None
 
-        self._parent = self._cache[schema_id].get(
-            putils.dirname(self._path)
-        )
+        self._parent = self._cache[schema_id].get(putils.dirname(self._path))
 
         if self and self._parent is not None:
             self._parent.add_child(self)
@@ -63,20 +61,22 @@ class BaseSchemaItem(object):
             self._cached_config = {}
 
             cfg_path = self._path
-            if not self._path.endswith('.yml'):
-                cfg_path = self._path + '.yml'
+            if not self._path.endswith(".yml"):
+                cfg_path = self._path + ".yml"
 
             if putils.exists(cfg_path):
                 try:
-                    with open(cfg_path, 'r') as f:
+                    with open(cfg_path, "r") as f:
                         self._cached_config = yaml.safe_load(f)
                 except:
                     reraise(
                         SchemaConfigError,
-                        SchemaConfigError('Failed to parse schema config file: {}. {}'.format(
-                            cfg_path, sys.exc_info()[1])
+                        SchemaConfigError(
+                            "Failed to parse schema config file: {}. {}".format(
+                                cfg_path, sys.exc_info()[1]
+                            )
                         ),
-                        sys.exc_info()[2]
+                        sys.exc_info()[2],
                     )
 
         if not self._cached_config:
@@ -87,9 +87,9 @@ class BaseSchemaItem(object):
     def _get_basename(self):
         basename = putils.basename(self._path)
 
-        config_template = self.get_config('template')
+        config_template = self.get_config("template")
         if config_template:
-            basename = re.subn(r'[\:\!]\w+}', '}', config_template)[0]
+            basename = re.subn(r"[\:\!]\w+}", "}", config_template)[0]
 
         return basename
 
@@ -122,12 +122,10 @@ class SchemaDir(BaseSchemaItem):
 
 
 class SchemaAnchor(BaseSchemaItem):
-
     def __init__(self, schema_id, path):
         super(SchemaAnchor, self).__init__(schema_id, path)
-        self.tags = self.get_config('tags')
-        self.type = self.get_config('type', ItemType.FILE)
+        self.tags = self.get_config("tags")
+        self.type = self.get_config("type", ItemType.FILE)
 
     def _get_basename(self):
-        return self.get_config('template', '')
-
+        return self.get_config("template", "")

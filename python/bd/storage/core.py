@@ -1,4 +1,4 @@
-__all__ = ['StoragePool', 'MetaItem', 'StorageItem', 'Identifier']
+__all__ = ["StoragePool", "MetaItem", "StorageItem", "Identifier"]
 
 import os
 import sys
@@ -32,8 +32,9 @@ _global_instance = None
 
 
 class Storage(object):
-
-    def __init__(self, pool, name, accessor, schema, formatter, adapter=None, tag_mask=None):
+    def __init__(
+        self, pool, name, accessor, schema, formatter, adapter=None, tag_mask=None
+    ):
         self._pool = pool
         self._name = name
         self._accessor = accessor
@@ -58,7 +59,7 @@ class Storage(object):
         accessor = cls._create_accessor(storage_config["accessor"])
         formatter = cls._create_formatter(storage_config["fields"])
         schema = cls._create_schema(storage_config["schema"])
-        adapter = cls._create_adapter(storage_config.get('adapter'))
+        adapter = cls._create_adapter(storage_config.get("adapter"))
 
         return Storage(
             pool,
@@ -67,7 +68,7 @@ class Storage(object):
             schema,
             formatter,
             adapter,
-            storage_config.get("tag_mask")
+            storage_config.get("tag_mask"),
         )
 
     @classmethod
@@ -75,16 +76,20 @@ class Storage(object):
         accessor_name = accessor_config.get("name")
         accessor_kwargs = accessor_config.get("kwargs", {})
 
-        if not accessor_name or accessor_name == 'fs':
+        if not accessor_name or accessor_name == "fs":
             return FileSystemAccessor(**accessor_kwargs)
 
         try:
-            return bd_hooks.execute(accessor_name, **accessor_kwargs).one()
+            return bd_hooks.execute(
+                "bd.storage.accessor." + accessor_name, **accessor_kwargs
+            ).one()
         except bd_hooks.HookError as e:
             reraise(
                 AccessorCreationError,
-                AccessorCreationError('Failed to initialize accessor "{}"'.format(accessor_name)),
-                sys.exc_info()[2]
+                AccessorCreationError(
+                    'Failed to initialize accessor "{}"'.format(accessor_name)
+                ),
+                sys.exc_info()[2],
             )
 
     @classmethod
@@ -103,13 +108,13 @@ class Storage(object):
 
         """
 
-        if 'BD_STORAGE_SCHEMA_PATH' not in os.environ:
+        if "BD_STORAGE_SCHEMA_PATH" not in os.environ:
             raise SchemaError(
-                'No schema search path defined. '
+                "No schema search path defined. "
                 'Please ensure "BD_STORAGE_SCHEMA_PATH" environment variable is defined.'
             )
 
-        schema_search_paths = os.environ['BD_STORAGE_SCHEMA_PATH'].split(os.pathsep)
+        schema_search_paths = os.environ["BD_STORAGE_SCHEMA_PATH"].split(os.pathsep)
 
         schema_dir = None
         for search_path in schema_search_paths:
@@ -135,12 +140,16 @@ class Storage(object):
 
         if adapter_name:
             try:
-                return bd_hooks.execute(adapter_name, **adapter_kwargs).one()
+                return bd_hooks.execute(
+                    "bd.storage.adapter." + adapter_name, **adapter_kwargs
+                ).one()
             except bd_hooks.HookError:
                 reraise(
                     AdapterCreationError,
-                    AdapterCreationError('Failed to initialize adapter "{}"'.format(adapter_name)),
-                    sys.exc_info()[2]
+                    AdapterCreationError(
+                        'Failed to initialize adapter "{}"'.format(adapter_name)
+                    ),
+                    sys.exc_info()[2],
                 )
 
     @property
@@ -224,16 +233,15 @@ class Storage(object):
 
 
 class Identifier(TagsEdit, FieldsEdit):
-
     def __init__(self, tags=None, fields=None):
         TagsEdit.__init__(self, tags)
         FieldsEdit.__init__(self, fields)
 
     def hash(self):
         return hashlib.md5(
-            str(
-                tuple(sorted(self.tags)) + tuple(sorted(self.fields.items()))
-            ).encode('UTF8')
+            str(tuple(sorted(self.tags)) + tuple(sorted(self.fields.items()))).encode(
+                "UTF8"
+            )
         ).hexdigest()
 
     def copy(self):
@@ -243,14 +251,13 @@ class Identifier(TagsEdit, FieldsEdit):
         return self.copy().remove_extra_tags().remove_extra_fields()
 
     def __str__(self):
-        return 'Identifier(tags={}, fields={})'.format(self.tags, self.fields)
+        return "Identifier(tags={}, fields={})".format(self.tags, self.fields)
 
     def __repr__(self):
         return self.__str__()
 
 
 class MetaItem(TagsMixin, ChainItemMixin):
-
     def __init__(self, tags, schema_item, storage):
         TagsMixin.__init__(self, tags)
         ChainItemMixin.__init__(self)
@@ -293,8 +300,8 @@ class MetaItem(TagsMixin, ChainItemMixin):
         if isinstance(fields, FieldsEdit):
             fields = fields.fields
 
-        if 'project' not in fields:
-            fields['project'] = self.project
+        if "project" not in fields:
+            fields["project"] = self.project
 
         target_storage_item = None
         prev_storage_item = None
@@ -305,7 +312,7 @@ class MetaItem(TagsMixin, ChainItemMixin):
 
         elif self._type == ItemType.COLLECTION:
             if ItemTypePrimaryFields.COLLECTION not in fields:
-                fields[ItemTypePrimaryFields.COLLECTION] = ''
+                fields[ItemTypePrimaryFields.COLLECTION] = ""
 
         downstream_meta_item = self.get_downstream_item()
 
@@ -319,11 +326,7 @@ class MetaItem(TagsMixin, ChainItemMixin):
             if not rpath:
                 continue
 
-            curr_storage_item = StorageItem(
-                rpath,
-                identifier.fields,
-                meta_item
-            )
+            curr_storage_item = StorageItem(rpath, identifier.fields, meta_item)
 
             if meta_item is self:
                 target_storage_item = curr_storage_item
@@ -339,8 +342,8 @@ class MetaItem(TagsMixin, ChainItemMixin):
         if isinstance(fields, FieldsEdit):
             fields = fields.fields
 
-        if 'project' not in fields:
-            fields['project'] = self.project
+        if "project" not in fields:
+            fields["project"] = self.project
 
         if self._adapter:
             identifier = Identifier(self.tags, fields)
@@ -352,13 +355,12 @@ class MetaItem(TagsMixin, ChainItemMixin):
         return self.__repr__()
 
     def __repr__(self):
-        return (
-            "MetaItem(tags={}, template='{}', storage='{}')"
-        ).format(self._tags, self._template, self.storage.name)
+        return ("MetaItem(tags={}, template='{}', storage='{}')").format(
+            self._tags, self._template, self.storage.name
+        )
 
 
 class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
-
     def __init__(self, rpath, fields, meta_item):
         TagsMixin.__init__(self, meta_item.tags)
         FieldsMixin.__init__(self, fields)
@@ -366,9 +368,9 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
         ChainItemMixin.__init__(self)
         self._rpath = rpath
         self._meta_item = meta_item
-        self.set_metadata('tags', self.tags)
-        self.set_metadata('fields', self.fields)
-        self.set_metadata('user', getpass.getuser())
+        self.set_metadata("tags", self.tags)
+        self.set_metadata("fields", self.fields)
+        self.set_metadata("user", getpass.getuser())
 
     @property
     def rpath(self):
@@ -405,23 +407,28 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
         except:
             reraise(
                 AccessorError,
-                AccessorError('Failed to check if item "{}" exists. {}'.format(self, sys.exc_info()[1])),
-                sys.exc_info()[2]
+                AccessorError(
+                    'Failed to check if item "{}" exists. {}'.format(
+                        self, sys.exc_info()[1]
+                    )
+                ),
+                sys.exc_info()[2],
             )
 
     def get_filesystem_path(self):
         return self.accessor.get_filesystem_path(self._rpath)
 
     def read(self, current_item_only=False, upstream=True, with_metadata=False):
-
         def _read_self():
             try:
                 data = self.accessor.read(self._rpath)
             except:
                 reraise(
                     AccessorError,
-                    AccessorError('Failed to read item "{}". {}'.format(self, sys.exc_info()[1])),
-                    sys.exc_info()[2]
+                    AccessorError(
+                        'Failed to read item "{}". {}'.format(self, sys.exc_info()[1])
+                    ),
+                    sys.exc_info()[2],
                 )
 
             if data is not None:
@@ -436,7 +443,9 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
 
         def _read_next():
             if self.next_item:
-                data = self.next_item.read(upstream=upstream, with_metadata=with_metadata)
+                data = self.next_item.read(
+                    upstream=upstream, with_metadata=with_metadata
+                )
 
                 if with_metadata:
                     # copy metadata from next item to current
@@ -459,9 +468,7 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
             return data
 
     def _dump_metadata(self):
-        dump_data = {
-            'date': datetime.datetime.now()
-        }
+        dump_data = {"date": datetime.datetime.now()}
 
         if self._metadata:
             metadata = utils.remove_extra_fields(self._metadata)
@@ -474,33 +481,33 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
             raise MetadataSerializationError(e)
 
         try:
-            self.accessor.write(self._rpath + '.meta', json_data)
+            self.accessor.write(self._rpath + ".meta", json_data)
         except:
             reraise(
                 AccessorError,
                 AccessorError(
                     'Failed to write metadata for item "{}". '
-                    '{}'.format(self, sys.exc_info()[1])
+                    "{}".format(self, sys.exc_info()[1])
                 ),
-                sys.exc_info()[2]
+                sys.exc_info()[2],
             )
 
     def _load_metadata(self):
         data = {}
 
-        metadata_rpath = self._rpath + '.meta'
+        metadata_rpath = self._rpath + ".meta"
         if not self.accessor.exists(metadata_rpath):
-            metadata_rpath = self._rpath + '.txt'
+            metadata_rpath = self._rpath + ".txt"
             if not self.accessor.exists(metadata_rpath):
                 return
 
         content = self.accessor.read(metadata_rpath)
 
-        if metadata_rpath.endswith('.meta'):
+        if metadata_rpath.endswith(".meta"):
             data = json.loads(content)
-            data["date"] = datetime.datetime.strptime(data['date'], "%m/%d/%Y %H:%M:%S")
-            data.pop('tags', None)
-            data.pop('fields', None)
+            data["date"] = datetime.datetime.strptime(data["date"], "%m/%d/%Y %H:%M:%S")
+            data.pop("tags", None)
+            data.pop("fields", None)
         else:
             active_section = None
             for line in content.splitlines():
@@ -512,7 +519,7 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
                 try:
                     title, text = line.split(":", 1)
                 except ValueError:
-                    data[active_section] = '\n'.join([data[active_section], line])
+                    data[active_section] = "\n".join([data[active_section], line])
                     continue
 
                 if text:
@@ -533,15 +540,12 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
         return data
 
     def write(self, data, current_item_only=False, upstream=True, with_metadata=False):
-
         def _write_self():
 
             if self.exists():
                 return
 
-            log.debug(
-                'Writing to item "{}" ...'.format(self)
-            )
+            log.debug('Writing to item "{}" ...'.format(self))
 
             try:
                 self.accessor.write(self._rpath, data)
@@ -550,15 +554,15 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
                     AccessorError,
                     AccessorError(
                         'Failed to write to item "{}". '
-                        '{}'.format(self, sys.exc_info()[1])
+                        "{}".format(self, sys.exc_info()[1])
                     ),
-                    sys.exc_info()[2]
+                    sys.exc_info()[2],
                 )
 
             if with_metadata:
                 self._dump_metadata()
 
-            log.debug('Done')
+            log.debug("Done")
 
         def _write_next():
             if not self.next_item:
@@ -585,16 +589,15 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
             return
 
         try:
-            bd_hooks.execute(
-                'bd.storage.on_item_pull',
-                self
-            ).all()
+            bd_hooks.execute("bd.storage.on_item_pull", self).all()
         except:
             pass
 
         data = self.read(upstream=False, with_metadata=with_metadata)
         if data is None:
-            raise ItemLoadingError('There is no data available for item: {}'.format(self))
+            raise ItemLoadingError(
+                "There is no data available for item: {}".format(self)
+            )
 
         downstream_item.write(data, with_metadata=with_metadata)
         return data
@@ -602,7 +605,9 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
     def push(self, with_metadata=False):
         data = self.read(with_metadata=with_metadata)
         if data is None:
-            raise ItemLoadingError('There is no data available for item: {}'.format(self))
+            raise ItemLoadingError(
+                "There is no data available for item: {}".format(self)
+            )
 
         self.write(data, with_metadata=with_metadata)
         return data
@@ -618,7 +623,7 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
                         self, sys.exc_info()[1]
                     )
                 ),
-                sys.exc_info()[2]
+                sys.exc_info()[2],
             )
 
     def remove(self, propagate=True):
@@ -629,33 +634,24 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
             reraise(
                 AccessorError,
                 AccessorError(
-                    'Failed to remove item "{}". {}'.format(
-                        self, sys.exc_info()[1]
-                    )
+                    'Failed to remove item "{}". {}'.format(self, sys.exc_info()[1])
                 ),
-                sys.exc_info()[2]
+                sys.exc_info()[2],
             )
         if propagate and self.next_item:
             self.next_item.remove(propagate)
-        log.debug('Done')
+        log.debug("Done")
 
     def __str__(self):
         return self.__repr__()
 
     def __repr__(self):
-        return (
-            "StorageItem(tags={}, fields={}, "
-            "rpath='{}', storage='{}')"
-        ).format(
-            repr(self._tags),
-            repr(self._fields),
-            self._rpath,
-            self.storage.name
+        return ("StorageItem(tags={}, fields={}, " "rpath='{}', storage='{}')").format(
+            repr(self._tags), repr(self._fields), self._rpath, self.storage.name
         )
 
 
 class StoragePool(object):
-
     @classmethod
     def get_global_instance(cls):
         return _global_instance
@@ -675,7 +671,7 @@ class StoragePool(object):
     def __init__(self, config):
         self._storages = []
         self._pool_config = config
-        self._project = self._pool_config['project']
+        self._project = self._pool_config["project"]
         self._cache = LRUCache(maxsize=5000)
         self._init_storages()
 
@@ -692,10 +688,12 @@ class StoragePool(object):
         filename = putils.normpath(filename)
 
         try:
-            rpath = filename[filename.index('/{}/'.format(self._project)) + 1:]
+            rpath = filename[filename.index("/{}/".format(self._project)) + 1 :]
         except ValueError:
             raise ProjectNameNotFound(
-                'Project name \'{}\' not found in path \'{}\''.format(self._project, filename)
+                "Project name '{}' not found in path '{}'".format(
+                    self._project, filename
+                )
             )
 
         for storage in self._storages:
@@ -709,9 +707,7 @@ class StoragePool(object):
                 return storage_item
 
     @cachedmethod(
-        lambda self: self._cache,
-        key=lambda x: tuple(sorted(x)),
-        lock=threading.RLock
+        lambda self: self._cache, key=lambda x: tuple(sorted(x)), lock=threading.RLock
     )
     def get_item(self, tags):
         """
@@ -773,9 +769,9 @@ class StoragePool(object):
 
         load_hooks()
 
-        for storage_config in self._pool_config['storages']:
+        for storage_config in self._pool_config["storages"]:
 
-            storage_name = storage_config['name']
+            storage_name = storage_config["name"]
 
             try:
                 storage = Storage.create_storage(self, storage_name, storage_config)
@@ -787,7 +783,7 @@ class StoragePool(object):
                             storage_name, sys.exc_info()[1]
                         )
                     ),
-                    sys.exc_info()[2]
+                    sys.exc_info()[2],
                 )
 
             self._storages.append(storage)
