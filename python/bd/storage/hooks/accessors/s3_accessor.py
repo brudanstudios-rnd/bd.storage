@@ -1,18 +1,18 @@
 import warnings
 import logging
 
-try:
-    from StringIO import StringIO
-except ImportError:
-    from io import StringIO
-
 from six import BytesIO
 
 from bd.storage.accessor import BaseAccessor
 
-import boto3
-from botocore.client import Config
-from botocore.exceptions import ClientError
+_is_boto3_found = True
+try:
+    import boto3
+    from botocore.client import Config
+    from botocore.exceptions import ClientError
+except ModuleNotFoundError:
+    _is_boto3_found = False
+
 
 log = logging.getLogger(__name__)
 
@@ -102,4 +102,5 @@ class S3Accessor(BaseAccessor):
 
 
 def register(registry):
-    registry.add_hook("bd.storage.accessor.s3", S3Accessor)
+    if _is_boto3_found:
+        registry.add_hook("bd.storage.accessor.s3", S3Accessor)
