@@ -83,7 +83,7 @@ class FileSystemAccessor(BaseAccessor):
         try:
             with open(tmp_filename, "wb") as f:
                 f.write(data)
-            os.rename(tmp_filename, filename)
+            os.replace(tmp_filename, filename)
         except:
             exc_info = sys.exc_info()
 
