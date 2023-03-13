@@ -539,10 +539,17 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
                     active_section = title
         return data
 
-    def write(self, data, current_item_only=False, upstream=True, with_metadata=False):
+    def write(
+        self,
+        data,
+        current_item_only=False,
+        upstream=True,
+        with_metadata=False,
+        force=False,
+    ):
         def _write_self():
 
-            if self.exists():
+            if not force and self.exists():
                 return
 
             log.debug('Writing to item "{}" ...'.format(self))
@@ -583,9 +590,9 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
             _write_next()
             _write_self()
 
-    def pull(self, with_metadata=False):
+    def pull(self, with_metadata=False, force=False):
         downstream_item = self.get_downstream_item()
-        if not downstream_item or downstream_item.exists():
+        if not force and downstream_item.exists():
             return
 
         try:
@@ -599,17 +606,17 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
                 "There is no data available for item: {}".format(self)
             )
 
-        downstream_item.write(data, with_metadata=with_metadata)
+        downstream_item.write(data, with_metadata=with_metadata, force=force)
         return data
 
-    def push(self, with_metadata=False):
+    def push(self, with_metadata=False, force=False):
         data = self.read(with_metadata=with_metadata)
         if data is None:
             raise ItemLoadingError(
                 "There is no data available for item: {}".format(self)
             )
 
-        self.write(data, with_metadata=with_metadata)
+        self.write(data, with_metadata=with_metadata, force=force)
         return data
 
     def make_directories(self):
