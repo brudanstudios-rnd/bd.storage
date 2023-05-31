@@ -1,6 +1,7 @@
 import sys
 import re
 import logging
+import threading
 
 import yaml
 from six import reraise
@@ -11,9 +12,10 @@ from ..enums import ItemType
 
 log = logging.getLogger(__name__)
 
+RLOCK = threading.RLock()
+
 
 class BaseSchemaItem(object):
-
     _cache = {}
 
     @classmethod
@@ -57,7 +59,6 @@ class BaseSchemaItem(object):
 
     def get_config(self, key, default=None):
         if self._cached_config is None:
-
             self._cached_config = {}
 
             cfg_path = self._path
@@ -98,17 +99,21 @@ class BaseSchemaItem(object):
         if self._cached_template is not None:
             return self._cached_template
 
-        basename = self._get_basename()
-        parent_item = self._parent
+        with RLOCK:
+            if self._cached_template is not None:
+                return self._cached_template
 
-        # if it's the root of the schema
-        if parent_item is None:
-            self._cached_template = basename
-        else:
-            parent_template = parent_item.template
-            self._cached_template = putils.join(parent_template, basename)
+            basename = self._get_basename()
+            parent_item = self._parent
 
-        return self._cached_template
+            # if it's the root of the schema
+            if parent_item is None:
+                self._cached_template = basename
+            else:
+                parent_template = parent_item.template
+                self._cached_template = putils.join(parent_template, basename)
+
+            return self._cached_template
 
     def __str__(self):
         return "{}('{}')".format(self.__class__.__name__, self.template)

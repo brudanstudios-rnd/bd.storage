@@ -1,6 +1,6 @@
 name = "bd.storage"
 
-version = "0.2.10"
+version = "0.2.11"
 
 build_command = "python -m rezutil build {root} --ignore .env"
 private_build_requires = ["rezutil"]
