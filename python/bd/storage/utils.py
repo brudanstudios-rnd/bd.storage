@@ -52,7 +52,6 @@ def match_tags(mask, tags):
     expression = []
 
     for item in mask:
-
         if item in "()":
             expression.append(item)
         elif item == "|":
@@ -75,7 +74,7 @@ def match_tags(mask, tags):
 
 class PathUtils(object):
     def walk(self, *args, **kwargs):
-        for root, dirnames, filenames in os.walk(*args, **kwargs):
+        for root, dirnames, filenames in os.walk(*args, **kwargs, followlinks=True):
             yield root.replace("\\", "/"), dirnames, filenames
 
     def _normpath(self, path):
