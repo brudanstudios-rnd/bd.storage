@@ -16,7 +16,7 @@ schema = Schema(
                 "fields": {
                     Use(str): {
                         Optional(
-                            Or("regex", "format", "type"),
+                            Or("regex", "format", "type", "label"),
                         ): And(Use(str), len)
                     }
                 },
@@ -25,7 +25,7 @@ schema = Schema(
                     "name": And(Use(str), len),
                     Optional("kwargs"): dict,
                 },
-                Optional("tag_mask"): Regex("^[\w\s\&\|\^\(\)]*$"),
+                Optional("tag_mask"): Regex(r"^[\w\s\&\|\^\(\)]*$"),
             }
         ],
     }
