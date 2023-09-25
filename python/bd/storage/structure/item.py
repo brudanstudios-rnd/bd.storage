@@ -129,8 +129,34 @@ class SchemaDir(BaseSchemaItem):
 class SchemaAnchor(BaseSchemaItem):
     def __init__(self, schema_id, path):
         super(SchemaAnchor, self).__init__(schema_id, path)
-        self.tags = self.get_config("tags")
         self.type = self.get_config("type", ItemType.FILE)
+        self._cached_tags = None
+
+    @property
+    def tags(self):
+        if self._cached_tags is not None:
+            return self._cached_tags
+
+        with RLOCK:
+            if self._cached_tags is not None:
+                return self._cached_tags
+
+            tags = self.get_config("tags")
+            if not tags:
+                return
+
+            parent_item = self._parent
+
+            while parent_item is not None:
+                tags_to_inherit = parent_item.get_config("tags_to_inherit")
+                if tags_to_inherit:
+                    tags.extend(tags_to_inherit)
+
+                parent_item = parent_item._parent
+
+            self._cached_tags = tags
+
+            return self._cached_tags
 
     def _get_basename(self):
         return self.get_config("template", "")
