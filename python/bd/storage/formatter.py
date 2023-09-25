@@ -3,10 +3,10 @@ import string
 import logging
 import threading
 
-from six import reraise
-
 from ._vendor import parse
-from ._vendor.cachetools import cachedmethod, LRUCache
+
+from six import reraise
+from cachetools import cachedmethod, LRUCache
 
 from .errors import *
 
@@ -28,7 +28,7 @@ class FieldFormatter(object):
             return "{" + key + "}"
 
     def __init__(self, field_formatting_config):
-        self._parser_spec_mapping = {}
+        self._regex_spec_mapping = {}
         self._format_spec_mapping = {}
         self._type_spec_mapping = {}
         self._defaults_spec_mapping = {}
@@ -36,12 +36,8 @@ class FieldFormatter(object):
         self._custom_type_parsers = {}
         self._cache = LRUCache(maxsize=5000)
 
-        self._ensure_extra_fields(field_formatting_config)
-
         for field_name, field_data in field_formatting_config.items():
-
             if "regex" in field_data:
-
                 custom_type = "_{}_".format(field_name)
                 if custom_type not in self._custom_type_parsers:
                     func = lambda x: x
@@ -49,7 +45,7 @@ class FieldFormatter(object):
 
                     self._custom_type_parsers[custom_type] = func
 
-                self._parser_spec_mapping[field_name] = "{{{}:{}}}".format(
+                self._regex_spec_mapping[field_name] = "{{{}:{}}}".format(
                     field_name, custom_type
                 )
 
@@ -63,9 +59,8 @@ class FieldFormatter(object):
 
     @cachedmethod(lambda self: self._cache, lock=threading.RLock)
     def parse(self, input_str, format_str):
-
         try:
-            typed_format = _formatter.format(format_str, **self._parser_spec_mapping)
+            typed_format = _formatter.format(format_str, **self._regex_spec_mapping)
         except KeyError as e:
             pass
         except Exception as e:
@@ -100,25 +95,8 @@ class FieldFormatter(object):
         except Exception as e:
             reraise(FormattingError, FormattingError(e), sys.exc_info()[2])
 
-    def _ensure_extra_fields(self, field_formatting_config):
-        if "_index_" not in field_formatting_config:
-            field_formatting_config["_index_"] = {
-                "regex": r"\d{4}",
-                "type": "int",
-                "format": "04d",
-            }
-        if "_version_" not in field_formatting_config:
-            field_formatting_config["_version_"] = {
-                "regex": r"\d{3}",
-                "type": "int",
-                "format": "03d",
-            }
-        if "_suffix_" not in field_formatting_config:
-            field_formatting_config["_suffix_"] = {"regex": r"[\.\-\w\d/\\]+"}
-
     def _ensure_typed(self, fields):
         for field, value in fields.items():
-
             type_conversion = self._type_spec_mapping.get(field)
             if not type_conversion or type_conversion not in _type_conversions:
                 continue
