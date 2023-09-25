@@ -24,7 +24,7 @@ from .utils import putils, json_encoder, load_hooks
 from .errors import *
 from .enums import ItemType, ItemTypePrimaryFields
 
-from ._vendor.cachetools import cachedmethod, LRUCache
+from cachetools import cachedmethod, LRUCache
 
 log = logging.getLogger(__name__)
 
@@ -195,7 +195,6 @@ class Storage(object):
         result_tags = result_fields = None
 
         for tags, item in self._schema.get_items().items():
-
             fields = self._formatter.parse(rpath, item.template)
             if not fields:
                 continue
@@ -317,7 +316,6 @@ class MetaItem(TagsMixin, ChainItemMixin):
         downstream_meta_item = self.get_downstream_item()
 
         for meta_item in downstream_meta_item.iter_chain():
-
             identifier = Identifier(self.tags, fields)
             if meta_item._adapter:
                 identifier = meta_item._adapter.input(identifier)
@@ -548,7 +546,6 @@ class StorageItem(TagsMixin, FieldsMixin, MetadataEdit, ChainItemMixin):
         force=False,
     ):
         def _write_self():
-
             if not force and self.exists():
                 return
 
@@ -704,7 +701,6 @@ class StoragePool(object):
             )
 
         for storage in self._storages:
-
             identifier = storage.get_identifier_from_rpath(rpath)
             if not identifier:
                 continue
@@ -714,7 +710,9 @@ class StoragePool(object):
                 return storage_item
 
     @cachedmethod(
-        lambda self: self._cache, key=lambda x: tuple(sorted(x)), lock=threading.RLock
+        lambda self: self._cache,
+        key=lambda _, tags: tuple(sorted(tags)),
+        lock=threading.RLock,
     )
     def get_item(self, tags):
         """
@@ -736,7 +734,6 @@ class StoragePool(object):
         item = prev_item = None
 
         for storage in self._storages:
-
             meta_item = storage.get_item(tags)
             if not meta_item:
                 continue
@@ -777,7 +774,6 @@ class StoragePool(object):
         load_hooks()
 
         for storage_config in self._pool_config["storages"]:
-
             storage_name = storage_config["name"]
 
             try:
