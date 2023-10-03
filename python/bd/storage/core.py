@@ -711,7 +711,7 @@ class StoragePool(object):
 
     @cachedmethod(
         lambda self: self._cache,
-        key=lambda _, tags: tuple(sorted(tags)),
+        key=lambda tags: tuple(sorted(tags)),
         lock=threading.RLock,
     )
     def get_item(self, tags):
