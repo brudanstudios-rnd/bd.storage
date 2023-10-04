@@ -8,6 +8,7 @@ import json
 import datetime
 import hashlib
 import threading
+import base64
 
 import bd.hooks as bd_hooks
 
@@ -248,6 +249,16 @@ class Identifier(TagsEdit, FieldsEdit):
 
     def pure(self):
         return self.copy().remove_extra_tags().remove_extra_fields()
+
+    def encode(self):
+        return base64.b64encode(
+            json.dumps({"tags": self.tags, "fields": self.fields}).encode()
+        ).decode()
+
+    @classmethod
+    def decode(cls, encoded_data):
+        decoded_data = json.loads(base64.b64decode(encoded_data))
+        return cls(**decoded_data)
 
     def __str__(self):
         return "Identifier(tags={}, fields={})".format(self.tags, self.fields)
