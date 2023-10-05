@@ -83,7 +83,7 @@ class FieldsEdit(FieldsMixin):
         self._fields[name] = value
         return self
 
-    def update_fields(self, fields):
+    def set_fields(self, **fields):
         self._fields.update(fields)
         return self
 
