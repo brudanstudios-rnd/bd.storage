@@ -47,6 +47,10 @@ class TagsEdit(TagsMixin):
             self.add_tag(tag)
         return self
 
+    def set_tags(self, *tags):
+        TagsMixin.__init__(self, tags)
+        return self
+
     def remove_tag(self, tag):
         try:
             self._tags.remove(tag)
@@ -84,6 +88,10 @@ class FieldsEdit(FieldsMixin):
         return self
 
     def set_fields(self, **fields):
+        FieldsMixin.__init__(self, fields)
+        return self
+
+    def update_fields(self, **fields):
         self._fields.update(fields)
         return self
 
