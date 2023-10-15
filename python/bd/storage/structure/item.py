@@ -141,9 +141,7 @@ class SchemaAnchor(BaseSchemaItem):
             if self._cached_tags is not None:
                 return self._cached_tags
 
-            tags = self.get_config("tags")
-            if not tags:
-                return
+            tags = self.get_config("tags", [])
 
             parent_item = self._parent
 
