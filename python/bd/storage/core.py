@@ -698,6 +698,10 @@ class StoragePool(object):
     def storages(self):
         return self._storages
 
+    @property
+    def config(self):
+        return self._pool_config
+
     @cachedmethod(lambda self: self._cache, lock=threading.RLock)
     def get_storage_item_from_filename(self, filename):
         filename = putils.normpath(filename)

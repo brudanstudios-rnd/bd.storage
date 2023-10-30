@@ -28,6 +28,7 @@ class FieldFormatter(object):
             return "{" + key + "}"
 
     def __init__(self, field_formatting_config):
+        self._config = field_formatting_config
         self._regex_spec_mapping = {}
         self._format_spec_mapping = {}
         self._type_spec_mapping = {}
@@ -36,7 +37,7 @@ class FieldFormatter(object):
         self._custom_type_parsers = {}
         self._cache = LRUCache(maxsize=5000)
 
-        for field_name, field_data in field_formatting_config.items():
+        for field_name, field_data in self._config.items():
             if "regex" in field_data:
                 custom_type = "_{}_".format(field_name)
                 if custom_type not in self._custom_type_parsers:
