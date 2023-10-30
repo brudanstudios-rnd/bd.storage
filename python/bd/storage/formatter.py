@@ -58,6 +58,10 @@ class FieldFormatter(object):
             if "type" in field_data:
                 self._type_spec_mapping[field_name] = field_data["type"]
 
+    @property
+    def config(self):
+        return self._config
+
     @cachedmethod(lambda self: self._cache, lock=threading.RLock)
     def parse(self, input_str, format_str):
         try:
