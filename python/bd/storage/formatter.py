@@ -38,11 +38,13 @@ class FieldFormatter(object):
         self._cache = LRUCache(maxsize=5000)
 
         for field_name, field_data in self._config.items():
-            if "regex" in field_data:
+            if "regex" in field_data or "choices" in field_data:
                 custom_type = "_{}_".format(field_name)
                 if custom_type not in self._custom_type_parsers:
                     func = lambda x: x
-                    func.pattern = field_data["regex"]
+                    func.pattern = field_data.get(
+                        "regex", "|".join(field_data.get("choices", []))
+                    )
 
                     self._custom_type_parsers[custom_type] = func
 

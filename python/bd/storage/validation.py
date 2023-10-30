@@ -17,7 +17,8 @@ schema = Schema(
                     Use(str): {
                         Optional(
                             Or("regex", "format", "type", "label"),
-                        ): And(Use(str), len)
+                        ): And(Use(str), len),
+                        Optional("choices"): And([str], len),
                     }
                 },
                 "accessor": {"name": And(Use(str), len), Optional("kwargs"): dict},
